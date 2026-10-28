@@ -1,0 +1,5 @@
+{
+  "source": "synthetic_test_fixture_not_a_real_office_scan",
+  "points": [[0,0,0,120,120,120],[1,0,0,180,180,180],[0,0,1,100,100,100],[1,0,1,160,160,160],[0.5,0,0.5,140,140,140]],
+  "planes": [{"id":"demo_floor","origin":[0,0,0],"normal":[0,1,0],"basis_uv":[[1,0,0],[0,0,1]],"contours":[{"kind":"outer","uv":[[0,0],[1,0],[1,1],[0,1]]}]}]
+}

@@ -1,0 +1,282 @@
+{
+  "schema_version": "room-pilot-1",
+  "units": "meter",
+  "coordinate_system": "RH_Z_UP",
+  "origin": "window_end_side_a_floor",
+  "room": {
+    "length": 4.0,
+    "width": 1.8,
+    "height": 3.0,
+    "dimension_source": "user_confirmed_interior_measurements",
+    "height_confirmed": true
+  },
+  "walls": [
+    {
+      "id": "wall_side_a",
+      "label": "侧墙 A · 小门侧",
+      "kind": "wall",
+      "start": [
+        0,
+        0
+      ],
+      "end": [
+        4.0,
+        0
+      ],
+      "outward": [
+        0,
+        -1
+      ],
+      "height": 3.0,
+      "thickness": 0.08,
+      "status": "user_dimension_constrained",
+      "thickness_status": "display_default_not_measured"
+    },
+    {
+      "id": "wall_side_b",
+      "label": "侧墙 B · 电梯侧",
+      "kind": "wall",
+      "start": [
+        0,
+        1.8
+      ],
+      "end": [
+        4.0,
+        1.8
+      ],
+      "outward": [
+        0,
+        1
+      ],
+      "height": 3.0,
+      "thickness": 0.08,
+      "status": "user_dimension_constrained",
+      "thickness_status": "display_default_not_measured"
+    },
+    {
+      "id": "wall_window",
+      "label": "窗端墙",
+      "kind": "wall",
+      "start": [
+        0,
+        0
+      ],
+      "end": [
+        0,
+        1.8
+      ],
+      "outward": [
+        -1,
+        0
+      ],
+      "height": 3.0,
+      "thickness": 0.08,
+      "status": "user_dimension_constrained",
+      "thickness_status": "display_default_not_measured"
+    },
+    {
+      "id": "wall_door_end",
+      "label": "防火门端墙",
+      "kind": "wall",
+      "start": [
+        4.0,
+        0
+      ],
+      "end": [
+        4.0,
+        1.8
+      ],
+      "outward": [
+        1,
+        0
+      ],
+      "height": 3.0,
+      "thickness": 0.08,
+      "status": "user_dimension_constrained",
+      "thickness_status": "display_default_not_measured"
+    }
+  ],
+  "openings": [
+    {
+      "id": "door_stair",
+      "label": "小门 · 待确认",
+      "kind": "door",
+      "subtype": "hinged",
+      "wall_id": "wall_side_a",
+      "u": 0.08,
+      "width": 0.82,
+      "bottom": 0,
+      "height": 2.15,
+      "open_angle_deg": 0,
+      "status": "video_assisted_unverified_candidate",
+      "dimensions_verified": false,
+      "placement_verified": false,
+      "parameter_source": "assistant_visual_estimate_not_automatic_scan_measurement",
+      "evidence_images": [
+        "frame_0038.jpg",
+        "frame_0004.jpg"
+      ],
+      "evidence_frames": [
+        {
+          "frame_id": "f0038",
+          "source_timestamp_seconds": 18.733333,
+          "sha256": "724316f59f964d7d97eed8b892d948916cab1b96b83f1ee9eae53dd7545d2f5a"
+        },
+        {
+          "frame_id": "f0004",
+          "source_timestamp_seconds": 1.733333,
+          "sha256": "846a13d7686fc7fde1291d3b72d3b7232a6a888d1702ee714be6bbdce0736fe7"
+        }
+      ],
+      "evidence_note": "视频可见小门在窗端相邻侧墙；位置和宽高为人工辅助估计。 来源时间：18.733 秒、1.733 秒。"
+    },
+    {
+      "id": "door_double",
+      "label": "端部防火门 · 待确认",
+      "kind": "door",
+      "subtype": "double_hinged",
+      "wall_id": "wall_door_end",
+      "u": 0.12,
+      "width": 1.56,
+      "bottom": 0,
+      "height": 2.2,
+      "open_angle_deg": 80,
+      "status": "video_assisted_unverified_candidate",
+      "dimensions_verified": false,
+      "placement_verified": false,
+      "parameter_source": "assistant_visual_estimate_not_automatic_scan_measurement",
+      "evidence_images": [
+        "frame_0027.jpg",
+        "frame_0049.jpg"
+      ],
+      "evidence_frames": [
+        {
+          "frame_id": "f0027",
+          "source_timestamp_seconds": 13.233333,
+          "sha256": "d40669accdbff16032e422816eac15334ad281f467da336814d693c4fe1e24dc"
+        },
+        {
+          "frame_id": "f0049",
+          "source_timestamp_seconds": 24.233333,
+          "sha256": "ed69b6911fb3b1acd2bce9132410b37853cb2710d9f71bb745f2ef52aa480b2d"
+        }
+      ],
+      "evidence_note": "视频可见打开的门扇和相邻开口；按双扇门示意建模，完整门洞宽高、两扇门状态和开启角度待确认。 来源时间：13.233 秒、24.233 秒。"
+    },
+    {
+      "id": "door_lift_a",
+      "label": "电梯门 A · 待确认",
+      "kind": "door",
+      "subtype": "elevator",
+      "wall_id": "wall_side_b",
+      "u": 0.7,
+      "width": 1.0,
+      "bottom": 0,
+      "height": 2.15,
+      "open_angle_deg": 0,
+      "status": "video_assisted_unverified_candidate",
+      "dimensions_verified": false,
+      "placement_verified": false,
+      "parameter_source": "assistant_visual_estimate_not_automatic_scan_measurement",
+      "evidence_images": [
+        "frame_0016.jpg"
+      ],
+      "evidence_frames": [
+        {
+          "frame_id": "f0016",
+          "source_timestamp_seconds": 7.733333,
+          "sha256": "e65241b21a3fa36550f2d2b0483b354a9c8005f4d74aacd7857e709691a24eeb"
+        }
+      ],
+      "evidence_note": "视频可见电梯正面；沿墙位置、门宽和门高为人工辅助估计。 来源时间：7.733 秒。"
+    },
+    {
+      "id": "door_lift_b",
+      "label": "电梯门 B · 待确认",
+      "kind": "door",
+      "subtype": "elevator",
+      "wall_id": "wall_side_b",
+      "u": 2.35,
+      "width": 1.0,
+      "bottom": 0,
+      "height": 2.15,
+      "open_angle_deg": 0,
+      "status": "video_assisted_unverified_candidate",
+      "dimensions_verified": false,
+      "placement_verified": false,
+      "parameter_source": "assistant_visual_estimate_not_automatic_scan_measurement",
+      "evidence_images": [
+        "frame_0022.jpg",
+        "frame_0070.jpg"
+      ],
+      "evidence_frames": [
+        {
+          "frame_id": "f0022",
+          "source_timestamp_seconds": 10.733333,
+          "sha256": "c1166fa923bcdc867d4d523acd26a44bb593feba59b18eaa2e602ba68d53ceb6"
+        },
+        {
+          "frame_id": "f0070",
+          "source_timestamp_seconds": 34.733333,
+          "sha256": "45a14f8bfffc0ad0ce8460357a3e9d5dba5a09109d8938f9fc374b7badd2e719"
+        }
+      ],
+      "evidence_note": "视频可见另一电梯和 L2 标识；两部电梯的顺序与间距需要核对。 来源时间：10.733 秒、34.733 秒。"
+    },
+    {
+      "id": "window_end",
+      "label": "窗户组合 · 待确认",
+      "kind": "window",
+      "subtype": "assembly",
+      "wall_id": "wall_window",
+      "u": 0.06,
+      "width": 1.68,
+      "bottom": 0.32,
+      "height": 2.48,
+      "status": "video_assisted_unverified_candidate",
+      "dimensions_verified": false,
+      "placement_verified": false,
+      "parameter_source": "assistant_visual_estimate_not_automatic_scan_measurement",
+      "evidence_images": [
+        "frame_0012.jpg",
+        "frame_0013.jpg",
+        "frame_0062.jpg"
+      ],
+      "evidence_frames": [
+        {
+          "frame_id": "f0012",
+          "source_timestamp_seconds": 5.733333,
+          "sha256": "1b15851a7f4b63e8411534ea14ebca07dd268ae409738a18bc5414e033d91300"
+        },
+        {
+          "frame_id": "f0013",
+          "source_timestamp_seconds": 6.233333,
+          "sha256": "dfc6f43b952df132a0b503d7850d0bb62b067713cf1e55f64cddfb3ad85d1f44"
+        },
+        {
+          "frame_id": "f0062",
+          "source_timestamp_seconds": 30.733333,
+          "sha256": "50fe99e81423fd27646441ee37cd3e27095c3d8b170d9bed8dd980779736a971"
+        }
+      ],
+      "evidence_note": "视频可见上下窗格、护栏和中间不透明带；边界不全，窗宽、窗高、窗台高及内部划分均为待确认示意。 来源时间：5.733 秒、6.233 秒、30.733 秒。"
+    }
+  ],
+  "provenance": {
+    "model_type": "video_assisted_measured_constraint_vector_room",
+    "input_type": "single_video",
+    "source_video_sha256": "cee5f273f080f3a69f60e222a488b3f86c74092a1340b33d7ca76ea7a38ed02d",
+    "extra_source_photos": 0,
+    "initial_user_confirmed_interior_dimensions_m": [
+      4.0,
+      1.8,
+      3.0
+    ],
+    "auto_extraction_claim": false,
+    "scan_horizontal_validation_passed": false,
+    "geometry_basis": "Room boundary from user measurements; opening types and relative layout reviewed from video. Opening numeric parameters are manual unverified estimates.",
+    "default_wall_thickness_m": 0.08,
+    "wall_thickness_measured": false,
+    "scan_overlay_registered": false
+  }
+}

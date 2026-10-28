@@ -1,0 +1,210 @@
+{
+  "schema_version": "room-pilot-1",
+  "units": "meter",
+  "coordinate_system": "RH_Z_UP",
+  "origin": "window_end_side_a_floor",
+  "room": {
+    "length": 4.0,
+    "width": 1.8,
+    "height": 3.0,
+    "dimension_source": "user_confirmed_interior_measurements",
+    "height_confirmed": true
+  },
+  "walls": [
+    {
+      "id": "wall_side_a",
+      "label": "侧墙 A · 16 标识与小门",
+      "kind": "wall",
+      "start": [
+        0,
+        0
+      ],
+      "end": [
+        4,
+        0
+      ],
+      "outward": [
+        0,
+        -1
+      ],
+      "height": 3.0,
+      "thickness": 0.08,
+      "status": "user_dimension_constrained",
+      "thickness_status": "display_default_not_measured"
+    },
+    {
+      "id": "wall_side_b",
+      "label": "侧墙 B · 电梯侧",
+      "kind": "wall",
+      "start": [
+        0,
+        1.8
+      ],
+      "end": [
+        4,
+        1.8
+      ],
+      "outward": [
+        0,
+        1
+      ],
+      "height": 3.0,
+      "thickness": 0.08,
+      "status": "user_dimension_constrained",
+      "thickness_status": "display_default_not_measured"
+    },
+    {
+      "id": "wall_window",
+      "label": "窗户端墙",
+      "kind": "wall",
+      "start": [
+        0,
+        0
+      ],
+      "end": [
+        0,
+        1.8
+      ],
+      "outward": [
+        -1,
+        0
+      ],
+      "height": 3.0,
+      "thickness": 0.08,
+      "status": "user_dimension_constrained",
+      "thickness_status": "display_default_not_measured"
+    },
+    {
+      "id": "wall_door_end",
+      "label": "双扇门端墙",
+      "kind": "wall",
+      "start": [
+        4,
+        0
+      ],
+      "end": [
+        4,
+        1.8
+      ],
+      "outward": [
+        1,
+        0
+      ],
+      "height": 3.0,
+      "thickness": 0.08,
+      "status": "user_dimension_constrained",
+      "thickness_status": "display_default_not_measured"
+    }
+  ],
+  "openings": [
+    {
+      "id": "door_stair",
+      "label": "侧墙小门 · 候选",
+      "kind": "door",
+      "subtype": "hinged",
+      "wall_id": "wall_side_a",
+      "u": 0.12,
+      "width": 0.85,
+      "bottom": 0,
+      "height": 2.2,
+      "open_angle_deg": 0,
+      "status": "photo_assisted_candidate",
+      "dimensions_verified": false,
+      "evidence_images": [
+        "3.jpg"
+      ],
+      "evidence_note": "依据原始照片与校正后的扫描立面辅助设置；位置、宽高和开启角度均需确认。电梯侧扫描有明显变形，候选未作为自动测量结果。"
+    },
+    {
+      "id": "door_double",
+      "label": "双扇门 · 候选",
+      "kind": "door",
+      "subtype": "double_hinged",
+      "wall_id": "wall_door_end",
+      "u": 0.1,
+      "width": 1.6,
+      "bottom": 0,
+      "height": 2.2,
+      "open_angle_deg": 80,
+      "status": "photo_assisted_candidate",
+      "dimensions_verified": false,
+      "evidence_images": [
+        "1.jpg",
+        "2.jpg"
+      ],
+      "evidence_note": "依据原始照片与校正后的扫描立面辅助设置；位置、宽高和开启角度均需确认。电梯侧扫描有明显变形，候选未作为自动测量结果。"
+    },
+    {
+      "id": "door_lift_a",
+      "label": "电梯门 A · 候选",
+      "kind": "door",
+      "subtype": "elevator",
+      "wall_id": "wall_side_b",
+      "u": 0.65,
+      "width": 1.0,
+      "bottom": 0,
+      "height": 2.18,
+      "open_angle_deg": 0,
+      "status": "photo_assisted_candidate",
+      "dimensions_verified": false,
+      "evidence_images": [
+        "4.jpg"
+      ],
+      "evidence_note": "依据原始照片与校正后的扫描立面辅助设置；位置、宽高和开启角度均需确认。电梯侧扫描有明显变形，候选未作为自动测量结果。"
+    },
+    {
+      "id": "door_lift_b",
+      "label": "电梯门 B · 候选",
+      "kind": "door",
+      "subtype": "elevator",
+      "wall_id": "wall_side_b",
+      "u": 2.25,
+      "width": 1.0,
+      "bottom": 0,
+      "height": 2.18,
+      "open_angle_deg": 0,
+      "status": "photo_assisted_candidate",
+      "dimensions_verified": false,
+      "evidence_images": [
+        "1.jpg"
+      ],
+      "evidence_note": "依据原始照片与校正后的扫描立面辅助设置；位置、宽高和开启角度均需确认。电梯侧扫描有明显变形，候选未作为自动测量结果。"
+    },
+    {
+      "id": "window_end",
+      "label": "窗户组合 · 候选",
+      "kind": "window",
+      "subtype": "assembly",
+      "wall_id": "wall_window",
+      "u": 0.05,
+      "width": 1.74,
+      "bottom": 0.34,
+      "height": 2.56,
+      "status": "scan_frame_candidate_photo_reviewed",
+      "dimensions_verified": false,
+      "evidence_images": [
+        "3.jpg",
+        "4.jpg"
+      ],
+      "evidence_note": "网格窗框/栏杆暗色点候选约 6845 个，结合照片确认窗户语义。边界有残缺，宽高待复测，内部分格仅作示意。"
+    }
+  ],
+  "provenance": {
+    "creation_date": "2026-10-28",
+    "model_type": "measured_constraint_structural_draft",
+    "auto_extraction_claim": false,
+    "room_orientation": "mesh_plane_families_with_visual_floor_ceiling_window_confirmation",
+    "scan_horizontal_validation_passed": false,
+    "scan_transform_reference": "cleanup_report.json",
+    "opening_review": "all_opening_dimensions_require_confirmation",
+    "default_wall_thickness_m": 0.08,
+    "wall_thickness_measured": false,
+    "source_scan": "../kiri_3dgs_images/unpacked/3DModel.glb",
+    "preserve_original_scan": true,
+    "initial_user_confirmed_interior_dimensions_m": [
+      4.0,
+      1.8,
+      3.0
+    ]
+  }
+}
