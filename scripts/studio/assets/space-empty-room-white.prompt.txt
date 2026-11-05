@@ -1,0 +1,3 @@
+Edited with the built-in image_gen tool. Reference: space-empty-room.png
+
+Edit the provided empty room render. Keep exactly the same room, architecture, door, window, oak floor, wall material, perspective, proportions, framing, and soft Nordic interior daylight. Change ONLY the external studio backdrop to clean pure white (#FFFFFF), not gray or off-white. Greatly soften and lighten the exterior cast shadow beneath and around the floor slab: just a very faint delicate contact shadow, no large dark gray halo. Preserve realistic gentle interior shadows so the room has depth. No added furniture, props, text, or logos. Output the full image on an opaque white background.

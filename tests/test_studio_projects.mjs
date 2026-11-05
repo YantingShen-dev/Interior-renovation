@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import {spaceTemplate,designFromSpace,projectKind,designAlbums} from '../scripts/studio/projects.mjs';
+import {providers,matchProvider} from '../scripts/studio/provider-presets.mjs';
+import plan from '../scripts/plan_geometry.js';
+const source=plan.createScene([[0,0],[5,0],[5,2],[3,2],[3,4],[0,4]],2.8);
+source.furniture=[{id:'kept_in_original'}];source.assets=[{id:'desk'}];source.finishes={floor:{asset_id:'oak'}};
+const before=structuredClone(source),template=spaceTemplate(source);
+assert.deepEqual(source,before);assert.equal(template.furniture.length,0);assert.equal(template.assets.length,0);assert.equal(template.finishes,undefined);assert.deepEqual(template.room.outline,source.room.outline);assert.equal(template.space_review.accepted,true);
+console.log('PASS saving a warehouse room preserves structure and does not mutate the furnished design');
+const item={kind:'space',scene:template},assets=[{id:'chair',dimensions:[.5,.5,.8]}],design=designFromSpace(item,assets);
+design.room.outline[0][0]=1;design.assets[0].dimensions[0]=2;design.furniture.push({id:'new_item'});
+assert.equal(template.room.outline[0][0],0);assert.equal(assets[0].dimensions[0],.5);assert.equal(template.furniture.length,0);
+console.log('PASS designs copy warehouse geometry and shared assets without mutating either source');
+assert.throws(()=>designFromSpace({kind:'draft',scene:template},[]),/先确认/);assert.throws(()=>designFromSpace({kind:'space',scene:{...template,space_review:{accepted:false}}},[]),/先确认/);
+assert.equal(projectKind({scene:{space_review:{accepted:false}}}),'draft');assert.equal(projectKind({scene:source}),'design');
+console.log('PASS unconfirmed drafts cannot enter design and legacy layouts keep their kind');
+const liveSpace={id:'live',kind:'space',name:'Current room',scene:template},deletedSpace={...liveSpace,id:'deleted',deleted_at:123};
+const linked=id=>({id:'design-'+id,kind:'design',scene:{...template,source_space:{id,name:id}}});
+const records=[liveSpace,deletedSpace,linked('live'),linked('deleted'),linked('missing'),{id:'legacy',kind:'design',scene:template}];
+const recordsBefore=structuredClone(records),albums=designAlbums(records);
+assert.deepEqual(albums.map(a=>a.id),['live','legacy']);assert.equal(albums[0].designs.length,1);assert.equal(albums[1].designs.length,1);
+assert.deepEqual(records,recordsBefore);
+assert.deepEqual(designAlbums([deletedSpace,linked('deleted'),linked('missing')]),[]);
+assert.equal(designAlbums(records.map(p=>p.id==='deleted'?{...p,deleted_at:null}:p)).find(a=>a.id==='deleted').designs.length,1);
+console.log('PASS missing/deleted rooms do not reappear as albums; saved designs survive and reconnect when restored');
+for(const [kind,list]of Object.entries(providers))for(const p of list){assert.equal(new URL(p.keys).protocol,'https:');if(p.base){assert.equal(new URL(p.base).protocol,'https:');assert.equal(matchProvider(kind,p.base+'/').id,p.id);}if(!p.pending)assert(p.models.length);assert(!p.models.includes('gpt-image-1'));}
+assert.equal(matchProvider('chat','https://custom.invalid/v1'),undefined);
+console.log('PASS known provider URLs match on reload and custom endpoints remain custom');

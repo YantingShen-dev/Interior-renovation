@@ -1,0 +1,4 @@
+Edited with the built-in image_gen tool. Transparent background enabled.
+Reference: space-empty-room-white.png
+
+Remove the external white studio background from this exact image and output a PNG with a real transparent alpha channel. Preserve the entire empty Scandinavian room cutaway exactly: plaster walls and thickness, oak door, window with its view, oak floor slab, interior lighting, perspective, proportions and framing. Everything OUTSIDE the architectural object's silhouette must be transparent, including the exterior ground and exterior cast shadow. Keep the white walls opaque, and keep the window scenery and all internal floor and wall details. Clean anti-aliased cutout edges, no white fringe. NO white background, NO gray background, NO checkerboard baked into image, NO opaque rectangular canvas, NO added objects, no text.

@@ -1,4 +1,5 @@
 .venv/
+/planargs.local.json
 .cache/
 node_modules/
 __pycache__/
@@ -8,6 +9,7 @@ __pycache__/
 
 # Runtime data and private captures stay on the machine.
 /现场素材/
+/本地空间/
 /单视频流程/*
 !/单视频流程/试验01/
 /单视频流程/试验01/*

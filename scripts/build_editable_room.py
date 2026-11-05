@@ -122,7 +122,7 @@ def main():
     scene_path.write_text(json.dumps(scene,ensure_ascii=False,indent=2),encoding="utf-8")
     subprocess.run(['node',str(ROOT/"scripts/export_room_model.cjs"),str(scene_path),str(OUT/"editable_room.glb"),str(OUT/"structure_parts.json")],check=True)
     points=json.loads((OUT/"cleaned_points.json").read_text())
-    geometry=(ROOT/"scripts/furniture_geometry.js").read_text(encoding="utf-8")+'\n'+(ROOT/"scripts/room_geometry.js").read_text(encoding="utf-8")
+    geometry=(ROOT/"scripts/door_geometry.js").read_text(encoding="utf-8")+'\n'+(ROOT/"scripts/furniture_geometry.js").read_text(encoding="utf-8")+'\n'+(ROOT/"scripts/room_geometry.js").read_text(encoding="utf-8")
     template=(ROOT/"scripts/room_editor_template.html.in").read_text(encoding="utf-8")
     photos={p.name:'data:image/jpeg;base64,'+base64.b64encode(p.read_bytes()).decode('ascii') for p in (ROOT/"现场素材/照片").glob('*.jpg')}
     html=template.replace('__GEOMETRY__',geometry).replace('__SCENE__',json.dumps(scene,ensure_ascii=False).replace('</','<\\/')).replace('__SCAN__',json.dumps(points)).replace('__PHOTOS__',json.dumps(photos))

@@ -1,23 +1,28 @@
 /* Shared parametric geometry for the editor and the GLB exporter. Units: metres. */
 (function (root) {
   const EPS=1e-7;
+  const M=typeof module!=='undefined'&&module.exports?require('./studio/materials.cjs'):null;
+  const D=typeof module!=='undefined'&&module.exports?require('./door_geometry.js'):root.RoomDoor;
+  const P=typeof module!=='undefined'&&module.exports?require('./plan_geometry.js'):root.RoomPlan;
   const F=typeof module!=='undefined'&&module.exports?require('./furniture_geometry.js'):root.RoomFurniture;
   function length(w){return Math.hypot(w.end[0]-w.start[0],w.end[1]-w.start[1]);}
   function wallMap(s){return Object.fromEntries(s.walls.map(w=>[w.id,w]));}
   function validate(s){
     const errors=[];const ids=new Set();
     if(!s.room||![s.room.length,s.room.width,s.room.height].every(v=>Number.isFinite(v)&&v>0))errors.push('房间尺寸必须为正数');
+    if(s.room?.regions)for(const poly of s.room.regions)try{P.validate(poly);}catch(e){errors.push(e.message);}
+    if(s.room?.outline)try{P.validate(s.room.outline);}catch(e){errors.push(e.message);}
     for(const e of [...s.walls,...s.openings,...(Array.isArray(s.furniture)?s.furniture:[])]){if(ids.has(e.id))errors.push(`重复 ID ${e.id}`);ids.add(e.id);}
     for(const w of s.walls){if(![...w.start,...w.end,w.height,w.thickness].every(Number.isFinite)||length(w)<.1||w.height<=.1||w.thickness<=0)errors.push(`${w.label} 参数无效`);}
     const walls=wallMap(s);
-    for(const o of s.openings){const w=walls[o.wall_id];if(!w){errors.push(`${o.label} 缺少所属墙`);continue;}
+    for(const o of s.openings){if(o.door_direction&&!D.directions.includes(o.door_direction))errors.push('门的开合方向无效');const w=walls[o.wall_id];if(!w){errors.push(`${o.label} 缺少所属墙`);continue;}
       if(![o.u,o.width,o.bottom,o.height,o.open_angle_deg||0].every(Number.isFinite)||o.u<0||o.width<=.05||o.bottom<0||o.height<=.05||o.u+o.width>length(w)+EPS||o.bottom+o.height>w.height+EPS)errors.push(`${o.label} 超出墙体范围或尺寸无效`);}
     for(let i=0;i<s.openings.length;i++)for(let j=i+1;j<s.openings.length;j++){
       const a=s.openings[i],b=s.openings[j];if(a.wall_id===b.wall_id&&Math.min(a.u+a.width,b.u+b.width)-Math.max(a.u,b.u)>EPS&&Math.min(a.bottom+a.height,b.bottom+b.height)-Math.max(a.bottom,b.bottom)>EPS)errors.push(`${a.label} 与 ${b.label} 的洞口重叠`);}
     if(F)errors.push(...F.validate(s));else if(s.furniture?.length)errors.push('家具模块未加载');
     return errors;
   }
-  function wallPoint(w,u,z,depth=0){const L=length(w),dx=(w.end[0]-w.start[0])/L,dy=(w.end[1]-w.start[1])/L;return [w.start[0]+dx*u+w.outward[0]*depth,w.start[1]+dy*u+w.outward[1]*depth,z];}
+  function wallPoint(w,u,z,depth=0){const L=length(w),dx=(w.end[0]-w.start[0])/L,dy=(w.end[1]-w.start[1])/L;depth+=w.reference_line==='center'?-w.thickness/2:w.reference_line==='outer'?-w.thickness:0;return [w.start[0]+dx*u+w.outward[0]*depth,w.start[1]+dy*u+w.outward[1]*depth,z];}
   function buildParts(s){
     const errors=validate(s);if(errors.length)throw new Error(errors.join('；'));
     const parts=[],walls=wallMap(s),H=s.room.height;
@@ -33,10 +38,11 @@
         if(openings.some(o=>u>o.u-EPS&&u<o.u+o.width+EPS&&z>o.bottom-EPS&&z<o.bottom+o.height+EPS))continue;
         boxes.push({center:wallPoint(w,u,z,w.thickness/2),size:[us[i+1]-us[i],w.thickness,zs[j+1]-zs[j]],yaw});
       }
-      add(w.id+'_surface',w.id,[.79,.83,.87,1],boxes,'wall');
+      if(w.skirt){const h=w.skirt.height||.09;const boxes=[];for(let i=0;i<us.length-1;i++){const u=(us[i]+us[i+1])/2;if(openings.some(o=>o.bottom<h&&u>o.u-EPS&&u<o.u+o.width+EPS))continue;boxes.push({center:wallPoint(w,u,h/2,-.008),size:[us[i+1]-us[i],.016,h],yaw});}add(w.id+'_skirt',w.id,w.skirt.color||[.025,.03,.03,1],boxes,'skirt');}
+      add(w.id+'_surface',w.id,w.material_override||s.finishes?.walls?.color||[.86,.84,.80,1],boxes,'wall');
     }
-    add('floor_surface','floor',[.53,.56,.59,1],[{center:[s.room.length/2,s.room.width/2,-.025],size:[s.room.length,s.room.width,.05],yaw:0}],'floor');
-    add('ceiling_surface','ceiling',[.90,.92,.94,1],[{center:[s.room.length/2,s.room.width/2,H+.025],size:[s.room.length,s.room.width,.05],yaw:0}],'ceiling');
+    add('floor_surface','floor',s.finishes?.floor?.color||[.68,.61,.51,1],s.room.regions?.length?s.room.regions.flatMap(p=>P.floorGeometry(p,-.025)):s.room.outline?P.floorGeometry(s.room.outline,-.025):[{center:[s.room.length/2,s.room.width/2,-.025],size:[s.room.length,s.room.width,.05],yaw:0}],'floor');
+    add('ceiling_surface','ceiling',[.90,.92,.94,1],s.room.regions?.length?s.room.regions.flatMap(p=>P.floorGeometry(p,H+.025)):s.room.outline?P.floorGeometry(s.room.outline,H+.025):[{center:[s.room.length/2,s.room.width/2,H+.025],size:[s.room.length,s.room.width,.05],yaw:0}],'ceiling');
     for(const o of s.openings){
       const w=walls[o.wall_id],yaw=Math.atan2(w.end[1]-w.start[1],w.end[0]-w.start[0]),t=.035;
       const frame=[{center:wallPoint(w,o.u+t/2,o.bottom+o.height/2),size:[t,.045,o.height],yaw},
@@ -44,44 +50,36 @@
         {center:wallPoint(w,o.u+o.width/2,o.bottom+o.height-t/2),size:[o.width,.045,t],yaw}];
       if(o.kind==='window'){
         frame.push({center:wallPoint(w,o.u+o.width/2,o.bottom+t/2),size:[o.width,.045,t],yaw});
-        frame.push({center:wallPoint(w,o.u+o.width/2,o.bottom+o.height/2),size:[t,.045,o.height],yaw});
-        frame.push({center:wallPoint(w,o.u+o.width/2,o.bottom+o.height*.48),size:[o.width,.045,.04],yaw});
-        frame.push({center:wallPoint(w,o.u+o.width/2,o.bottom+o.height*.63),size:[o.width,.045,.04],yaw});
-        add(o.id+'_frame',o.id,[.22,.30,.35,1],frame,'window_frame');
-        add(o.id+'_glass',o.id,[.31,.69,.82,.28],[{center:wallPoint(w,o.u+o.width/2,o.bottom+o.height/2),size:[o.width-.04,.012,o.height-.04],yaw}],'glass');
-        add(o.id+'_infill',o.id,[.82,.84,.85,1],[{center:wallPoint(w,o.u+o.width/2,o.bottom+o.height*.555),size:[o.width,.045,o.height*.15],yaw}],'window_infill');
+        add(o.id+'_frame',o.id,o.frame_color||[.22,.30,.35,1],frame,'window_frame');
+        add(o.id+'_glass',o.id,o.glass_color||[.31,.69,.82,.28],[{center:wallPoint(w,o.u+o.width/2,o.bottom+o.height/2),size:[o.width-.04,.012,o.height-.04],yaw}],'glass');
       }else{
         add(o.id+'_frame',o.id,[.30,.34,.37,1],frame,'door_frame');
         const panel=[];
-        if(o.subtype==='double_hinged'){
-          const angle=(o.open_angle_deg||0)*Math.PI/180;
-          for(const side of [0,1]){
-            const hinge=wallPoint(w,o.u+(side?o.width:0),o.bottom+o.height/2);
-            const directionYaw=yaw+(side?Math.PI:0)+(side?-1:1)*angle;
-            panel.push({center:[hinge[0]+Math.cos(directionYaw)*o.width/4,hinge[1]+Math.sin(directionYaw)*o.width/4,hinge[2]],size:[o.width/2,.025,o.height-.015],yaw:directionYaw});
-          }
-        }else if(o.subtype==='elevator'){
-          for(const f of [.25,.75])panel.push({center:wallPoint(w,o.u+o.width*f,o.bottom+o.height/2),size:[o.width/2-.006,.022,o.height-.015],yaw});
+        if(o.subtype==='elevator'||o.subtype==='sliding'){
+          for(const f of [.25,.75])panel.push({center:wallPoint(w,o.u+o.width*f,o.bottom+o.height/2,w.thickness/2),size:[o.width/2-.006,.022,o.height-.015],yaw});
         }else{
-          const a=(o.open_angle_deg||0)*Math.PI/180,hinge=wallPoint(w,o.u,o.bottom+o.height/2);
-          panel.push({center:[hinge[0]+Math.cos(yaw+a)*o.width/2,hinge[1]+Math.sin(yaw+a)*o.width/2,hinge[2]],size:[o.width,.025,o.height-.015],yaw:yaw+a});
+          for(const side of o.subtype==='double_hinged'?[0,1]:[null]){
+            const p=D.pose(w,o,side),a=Math.abs(o.open_angle_deg||0)*Math.PI/180,end=p.at(a),directionYaw=Math.atan2(end[1]-p.hinge[1],end[0]-p.hinge[0]);
+            panel.push({center:[(p.hinge[0]+end[0])/2,(p.hinge[1]+end[1])/2,o.bottom+o.height/2],size:[p.radius,.025,o.height-.015],yaw:directionYaw});
+          }
         }
         add(o.id+'_panel',o.id,o.subtype==='elevator'?[.58,.62,.66,1]:[.79,.64,.43,1],panel,'door');
       }
     }
     if(F)parts.push(...F.buildParts(s));
+    if(M)for(const part of parts){const m=M.forPart(s,part);if(m){part.material=m;part.color=m.color||part.color;}}
     return parts;
   }
   const QUADS=[[0,3,2,1],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]];
-  function boxVertices(b){const c=Math.cos(b.yaw||0),s=Math.sin(b.yaw||0);return [[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]].map(v=>{const x=v[0]*b.size[0]/2,y=v[1]*b.size[1]/2;return [b.center[0]+x*c-y*s,b.center[1]+x*s+y*c,b.center[2]+v[2]*b.size[2]/2];});}
-  function partTriangles(part){const positions=[],normals=[];for(const box of part.boxes){const v=boxVertices(box);for(const q of QUADS){const a=v[q[0]],b=v[q[1]],c=v[q[2]],u=b.map((x,i)=>x-a[i]),w=c.map((x,i)=>x-a[i]);let n=[u[1]*w[2]-u[2]*w[1],u[2]*w[0]-u[0]*w[2],u[0]*w[1]-u[1]*w[0]];const d=Math.hypot(...n);n=n.map(x=>x/d);for(const j of [q[0],q[1],q[2],q[0],q[2],q[3]]){positions.push(...v[j]);normals.push(...n);}}}return {positions,normals};}
+  function boxVertices(b){if(b.vertices)return b.vertices;const c=Math.cos(b.yaw||0),s=Math.sin(b.yaw||0);return [[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]].map(v=>{const x=v[0]*b.size[0]/2,y=v[1]*b.size[1]/2;return [b.center[0]+x*c-y*s,b.center[1]+x*s+y*c,b.center[2]+v[2]*b.size[2]/2];});}
+  function partTriangles(part){const positions=[],normals=[];for(const box of part.boxes){const v=boxVertices(box);for(const q of QUADS)for(const indices of [[q[0],q[1],q[2]],[q[0],q[2],q[3]]]){const [a,b,c]=indices.map(i=>v[i]),u=b.map((x,i)=>x-a[i]),w=c.map((x,i)=>x-a[i]);let n=[u[1]*w[2]-u[2]*w[1],u[2]*w[0]-u[0]*w[2],u[0]*w[1]-u[1]*w[0]];const d=Math.hypot(...n);if(d<1e-12)continue;n=n.map(x=>x/d);for(const j of indices){positions.push(...v[j]);normals.push(...n);}}}return {positions,normals};}
   function exportGLB(s){
     const parts=buildParts(s),chunks=[],views=[],accessors=[],meshes=[],materials=[],nodes=[],bufferOffsets=[];let offset=0;
     const entities=[{id:'floor',label:'地面',kind:'floor',status:'user_dimensions'},{id:'ceiling',label:'顶面',kind:'ceiling',status:'user_dimensions'},...s.walls,...s.openings,...(s.furniture||[])];
     const rootChildren=[];nodes.push({name:'room',children:rootChildren,extras:{units:'meter',mesh_coordinate_system:'RH_Y_UP',parameter_coordinate_system:'RH_Z_UP',room:s.room,provenance:s.provenance}});
     const parents={};for(const e of entities){parents[e.id]=nodes.length;rootChildren.push(nodes.length);nodes.push({name:e.id,children:[],extras:JSON.parse(JSON.stringify(e))});}
     function attribute(values){const bytes=new Uint8Array(new Float32Array(values).buffer);const min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infinity,-Infinity];for(let i=0;i<values.length;i++){min[i%3]=Math.min(min[i%3],values[i]);max[i%3]=Math.max(max[i%3],values[i]);}const vi=views.length;views.push({buffer:0,byteOffset:offset,byteLength:bytes.length,target:34962});chunks.push(bytes);offset+=bytes.length;const ai=accessors.length;accessors.push({bufferView:vi,componentType:5126,count:values.length/3,type:'VEC3',min,max});return ai;}
-    for(const part of parts){const data=partTriangles(part);function yup(v){const r=[];for(let i=0;i<v.length;i+=3)r.push(v[i],v[i+2],-v[i+1]);return r;}const pos=attribute(yup(data.positions)),norm=attribute(yup(data.normals));const mi=materials.length;materials.push({name:part.id,pbrMetallicRoughness:{baseColorFactor:part.color,metallicFactor:(part.role==='door'&&part.id.includes('lift')) ? 0.65 : 0,roughnessFactor:.8},alphaMode:part.color[3]<1?'BLEND':'OPAQUE',doubleSided:true});const gi=meshes.length;meshes.push({name:part.id,primitives:[{attributes:{POSITION:pos,NORMAL:norm},material:mi,mode:4}]});nodes[parents[part.parent]].children.push(nodes.length);nodes.push({name:part.id,mesh:gi,extras:{semantic_parent:part.parent,role:part.role}});}
+    for(const part of parts){const data=partTriangles(part);function yup(v){const r=[];for(let i=0;i<v.length;i+=3)r.push(v[i],v[i+2],-v[i+1]);return r;}const pos=attribute(yup(data.positions)),norm=attribute(yup(data.normals));const mi=materials.length;materials.push({name:part.id,pbrMetallicRoughness:{baseColorFactor:part.material?[...part.color.slice(0,3),part.material.opacity??1]:part.color,metallicFactor:part.material?.metalness??((part.role==='door'&&part.id.includes('lift')) ? 0.65 : 0),roughnessFactor:part.material?.roughness??.8},alphaMode:(part.material?.opacity??part.color[3])<1?'BLEND':'OPAQUE',doubleSided:true});const gi=meshes.length;meshes.push({name:part.id,primitives:[{attributes:{POSITION:pos,NORMAL:norm},material:mi,mode:4}]});nodes[parents[part.parent]].children.push(nodes.length);nodes.push({name:part.id,mesh:gi,extras:{semantic_parent:part.parent,role:part.role}});}
     const gltf={asset:{version:'2.0',generator:'Room pilot parametric editor'},scene:0,scenes:[{nodes:[0]}],nodes,meshes,materials,buffers:[{byteLength:offset}],bufferViews:views,accessors};
     let text=new TextEncoder().encode(JSON.stringify(gltf));const jsonLength=Math.ceil(text.length/4)*4,binLength=Math.ceil(offset/4)*4;
     const result=new ArrayBuffer(12+8+jsonLength+8+binLength),dv=new DataView(result),bytes=new Uint8Array(result);

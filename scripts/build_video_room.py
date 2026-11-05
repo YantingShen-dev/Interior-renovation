@@ -57,7 +57,7 @@ def write_editor(project,destination):
     old='扫描高度已按 3 米作统一比例校正，对侧表面检测宽度约 1.64–2.34 米，未通过 1.8 米净宽核验。当前规则房间是实测约束草模，门窗支持修改和替换。颜色用于区分构件，尚未恢复装修材质。'
     scan_link=html.escape(Path(os.path.relpath(project/'单视频结果.html',destination.parent)).as_posix(),quote=True)
     template=template.replace(old,'这是尺寸约束与视频辅助建立的矢量房间。墙体有真实开口，门窗可独立修改、删除和新增；JSON 可继续编辑，GLB 保留构件节点。门窗尺寸待确认，颜色为示意。 <a href="'+scan_link+'">查看扫描与视频证据</a>')
-    geometry=(ROOT/'scripts/furniture_geometry.js').read_text(encoding='utf-8')+'\n'+(ROOT/'scripts/room_geometry.js').read_text(encoding='utf-8')
+    geometry=(ROOT/'scripts/door_geometry.js').read_text(encoding='utf-8')+'\n'+(ROOT/'scripts/furniture_geometry.js').read_text(encoding='utf-8')+'\n'+(ROOT/'scripts/room_geometry.js').read_text(encoding='utf-8')
     template=template.replace('__GEOMETRY__',geometry).replace('__SCENE__',json.dumps(scene,ensure_ascii=False).replace('</','<\\/')).replace('__SCAN__','[]').replace('__PHOTOS__',json.dumps(photos))
     if any(token in template for token in ('__GEOMETRY__','__SCENE__','__SCAN__','__PHOTOS__')):raise ValueError('Editor data was not embedded.')
     destination.write_text(template,encoding='utf-8')

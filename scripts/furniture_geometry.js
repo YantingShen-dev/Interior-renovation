@@ -1,6 +1,8 @@
 /* Furniture envelopes, parametric display meshes and layout checks. Metres, Z up. */
 (function(root){
 const EPS=1e-7;
+const D=typeof module!=='undefined'&&module.exports?require('./door_geometry.js'):root.RoomDoor;
+const P=typeof module!=='undefined'&&module.exports?require('./plan_geometry.js'):root.RoomPlan;
 const presets=[
  {id:'desk',label:'办公桌',dimensions:[1.2,.6,.75],mount:'floor',color:[.72,.53,.33,1]},
  {id:'chair',label:'办公椅',dimensions:[.55,.55,.9],mount:'floor',color:[.21,.4,.44,1]},
@@ -14,6 +16,7 @@ const presets=[
 ];
 function asset(s,id){return [...presets,...(s.assets||[])].find(p=>p.id===id);}
 function pose(s,f){
+ if(f.free_position)return {position:[...f.position],rotation_deg:f.rotation_deg};
  const [w,d,h]=f.dimensions;
  if(f.mount==='wall'){
   const wall=s.walls.find(v=>v.id===f.wall_id);if(!wall)throw new Error('挂墙家具缺少墙体');
@@ -39,20 +42,22 @@ function validate(s){
  for(const a of s.assets||[]){
   if(typeof a.id!=='string'||assetIds.has(a.id)||!Array.isArray(a.dimensions)||a.dimensions.length!==3||!a.dimensions.every(v=>Number.isFinite(v)&&v>.02)||!['floor','wall','ceiling'].includes(a.mount))errors.push('自定义家具库条目无效或 ID 重复');
   assetIds.add(a.id);
+  if(a.parts&&(!Array.isArray(a.parts)||a.parts.length>48||a.parts.some(p=>!Array.isArray(p.center)||p.center.length!==3||!p.center.every(Number.isFinite)||!Array.isArray(p.size)||p.size.length!==3||!p.size.every(v=>Number.isFinite(v)&&v>0&&v<=1)||!Array.isArray(p.color)||p.color.length!==4||!p.color.every(v=>Number.isFinite(v)&&v>=0&&v<=1))))errors.push('家具组合体参数无效');
   if(a.source_url&&!/^https:\/\//i.test(a.source_url))errors.push('商品来源链接必须采用 HTTPS');
   if(a.reference_image&&!/^data:image\/(jpeg|png|webp);base64,/i.test(a.reference_image))errors.push('家具参考图格式不支持');
+  if(a.price_cny!==undefined&&(!Number.isFinite(a.price_cny)||a.price_cny<0))errors.push('资产价格必须是非负数');
  }
  for(const f of s.furniture||[]){
   if(f.kind!=='furniture'||!['floor','wall','ceiling'].includes(f.mount)||!Array.isArray(f.dimensions)||f.dimensions.length!==3||!f.dimensions.every(v=>Number.isFinite(v)&&v>.02)||!Array.isArray(f.position)||f.position.length!==3||!f.position.every(Number.isFinite)||!Number.isFinite(f.rotation_deg)){errors.push(`${f.label||f.id} 家具参数无效`);continue;}
   if(!asset(s,f.asset_id)){errors.push(`${f.label} 缺少家具库条目`);continue;}
-  if(f.mount==='wall'){
+  if(f.mount==='wall'&&!f.free_position){
    const wall=s.walls.find(w=>w.id===f.wall_id);
    if(!wall||!Number.isFinite(f.u)){errors.push(`${f.label} 缺少有效挂墙位置`);continue;}
    const length=Math.hypot(wall.end[0]-wall.start[0],wall.end[1]-wall.start[1]);
    if(f.u-f.dimensions[0]/2 < -EPS||f.u+f.dimensions[0]/2>length+EPS)errors.push(`${f.label} 超出挂墙范围`);
   }
   const p=pose(s,f),xy=footprint(s,f);
-  if(xy.some(v=>v[0]<-EPS||v[1]<-EPS||v[0]>s.room.length+EPS||v[1]>s.room.width+EPS)||p.position[2]<-EPS||p.position[2]+f.dimensions[2]>s.room.height+EPS)errors.push(`${f.label} 超出房间边界`);
+  if(xy.some(v=>v[0]<-EPS||v[1]<-EPS||v[0]>s.room.length+EPS||v[1]>s.room.width+EPS)||(s.room.regions?.length&&!P.insideRegions(xy,s.room.regions))||(s.room.outline&&!P.insideFootprint(xy,s.room.outline))||p.position[2]<-EPS||p.position[2]+f.dimensions[2]>s.room.height+EPS)errors.push(`${f.label} 超出房间边界`);
  }return errors;
 }
 function buildParts(s){
@@ -60,7 +65,9 @@ function buildParts(s){
  for(const f of s.furniture||[]){
   const [w,d,h]=f.dimensions,p=pose(s,f),a=p.rotation_deg*Math.PI/180,boxes=[],preset=asset(s,f.asset_id),style=preset?.style||f.asset_id;
   function box(x,y,z,sx,sy,sz,color){if([sx,sy,sz].some(v=>v<=0))return;boxes.push({center:[p.position[0]+x*Math.cos(a)-y*Math.sin(a),p.position[1]+x*Math.sin(a)+y*Math.cos(a),p.position[2]+z],size:[sx,sy,sz],yaw:a,...(color?{color}: {})});}
-  if(style==='micke'){
+  if(style==='compound'&&preset.parts?.length){
+   for(const part of preset.parts)box(part.center[0]*w,part.center[1]*d,part.center[2]*h,part.size[0]*w,part.size[1]*d,part.size[2]*h,part.color);
+  }else if(style==='micke'){
    box(0,0,h-.015,w,d,.03);box(-w/2+.018,0,(h-.03)/2,.036,d,h-.03);
    box(w/2-.02,0,h-.08,.04,d,.13);for(const y of [-1,1])box(w/2-.02,y*d*.43,(h-.14)/2,.025,.025,h-.14);
    box(0,d/2-.025,h-.08,w-.075,.035,.10);box(0,-d/2+.02,h-.16,w-.075,.03,.13);
@@ -104,8 +111,9 @@ function doorZones(s,clearance=.8){
  return s.openings.filter(o=>o.kind==='door').map(o=>{
   const wall=s.walls.find(w=>w.id===o.wall_id),length=Math.hypot(wall.end[0]-wall.start[0],wall.end[1]-wall.start[1]),t=wall.end.map((v,k)=>(v-wall.start[k])/length);
   const depth=Math.max(clearance,o.subtype==='elevator'?0:o.width/(o.subtype==='double_hinged'?2:1));
-  const center=wall.start.map((v,k)=>v+t[k]*(o.u+o.width/2)-wall.outward[k]*depth/2);
-  return {id:o.id,label:o.label,polygon:rect(center,o.width,depth,Math.atan2(t[1],t[0])*180/Math.PI),center:wall.start.map((v,k)=>v+t[k]*(o.u+o.width/2)-wall.outward[k]*(clearance/2+.08)),height:o.height,bottom:o.bottom,width:o.width};
+  const swing=o.door_direction?.endsWith('out')?1:-1,thickness=wall.thickness??.12,offset=wall.reference_line==='center'?-thickness/2:wall.reference_line==='outer'?-thickness:0;
+  const center=wall.start.map((v,k)=>v+t[k]*(o.u+o.width/2)+wall.outward[k]*(offset+(swing>0?thickness:0)+swing*depth/2));
+  return {id:o.id,label:o.label,polygon:o.door_direction&&o.subtype!=='double_hinged'&&!['elevator','sliding'].includes(o.subtype)?D.sector(wall,o):rect(center,o.width,depth,Math.atan2(t[1],t[0])*180/Math.PI),center:wall.start.map((v,k)=>v+t[k]*(o.u+o.width/2)-wall.outward[k]*(clearance/2+.08)),height:o.height,bottom:o.bottom,width:o.width};
  });
 }
 function pointDistance(point,polygon){
@@ -128,14 +136,14 @@ function analyze(s,options={}){
    if(Math.min(top,bt)-Math.max(bottom,bb)>EPS&&overlap(a.polygon,b.polygon))issues.push({type:'collision',ids:[a.f.id,b.f.id],message:`${a.f.label} 与 ${b.f.label} 的占用空间重叠`});
   }
   for(const zone of zones)if(top>zone.bottom&&bottom<zone.bottom+zone.height&&overlap(a.polygon,zone.polygon))issues.push({type:'door_clearance',ids:[a.f.id,zone.id],message:`${a.f.label} 进入 ${zone.label} 的门前预留区`});
-  if(a.f.mount==='wall')for(const o of s.openings.filter(o=>o.wall_id===a.f.wall_id))if(Math.min(a.f.u+a.f.dimensions[0]/2,o.u+o.width)-Math.max(a.f.u-a.f.dimensions[0]/2,o.u)>EPS&&Math.min(top,o.bottom+o.height)-Math.max(bottom,o.bottom)>EPS)issues.push({type:'opening_overlap',ids:[a.f.id,o.id],message:`${a.f.label} 遮挡 ${o.label}`});
+  if(a.f.mount==='wall'&&!a.f.free_position)for(const o of s.openings.filter(o=>o.wall_id===a.f.wall_id))if(Math.min(a.f.u+a.f.dimensions[0]/2,o.u+o.width)-Math.max(a.f.u-a.f.dimensions[0]/2,o.u)>EPS&&Math.min(top,o.bottom+o.height)-Math.max(bottom,o.bottom)>EPS)issues.push({type:'opening_overlap',ids:[a.f.id,o.id],message:`${a.f.label} 遮挡 ${o.label}`});
  }
  // Configuration-space grid: inflate envelopes by half the requested passage width.
  const radius=clearance/2,step=Math.max(.08,Math.max(s.room.length,s.room.width)/180),xs=[],ys=[];
  for(let x=radius+.001;x<s.room.length-radius;x+=step)xs.push(x);
  for(let y=radius+.001;y<s.room.width-radius;y+=step)ys.push(y);
  const obstacles=data.filter(a=>a.pose.position[2]<1.8&&a.pose.position[2]+a.f.dimensions[2]>.1),blocked=new Uint8Array(xs.length*ys.length),labels=new Int32Array(blocked.length);let group=0;
- for(let y=0;y<ys.length;y++)for(let x=0;x<xs.length;x++)if(obstacles.some(a=>pointDistance([xs[x],ys[y]],a.polygon)<radius-EPS))blocked[y*xs.length+x]=1;
+ for(let y=0;y<ys.length;y++)for(let x=0;x<xs.length;x++)if((s.room.outline&&(!P.contains([xs[x],ys[y]],s.room.outline)||P.boundaryDistance([xs[x],ys[y]],s.room.outline)<radius-EPS))||obstacles.some(a=>pointDistance([xs[x],ys[y]],a.polygon)<radius-EPS))blocked[y*xs.length+x]=1;
  for(let i=0;i<blocked.length;i++)if(!blocked[i]&&!labels[i]){
   group++;const queue=[i];labels[i]=group;
   for(let k=0;k<queue.length;k++){const v=queue[k],x=v%xs.length,y=Math.floor(v/xs.length);for(const [dx,dy]of [[1,0],[-1,0],[0,1],[0,-1]]){const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=xs.length||yy>=ys.length)continue;const n=yy*xs.length+xx;if(!blocked[n]&&!labels[n]){labels[n]=group;queue.push(n);}}}

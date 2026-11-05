@@ -5,9 +5,9 @@
   "scripts": {
     "build:studio": "node scripts/studio/build.cjs",
     "test:studio": "node tests/test_studio_state.cjs && node tests/test_studio_scene.mjs && node tests/test_studio_artifact.cjs && node tests/test_studio_ui.cjs",
-    "test:geometry": "node tests/test_furniture_geometry.cjs && node tests/test_room_geometry.cjs",
+    "test:geometry": "node tests/test_furniture_geometry.cjs && node tests/test_room_geometry.cjs && node tests/test_studio_plan.cjs",
     "start": "node scripts/studio/server.cjs",
-    "test:workflow": "node tests/test_workflow.cjs && node tests/test_studio_server.cjs && node tests/test_workflow_scene.mjs"
+    "test:workflow": "node tests/test_provider_config.cjs && node tests/test_key_field.mjs && node tests/test_workflow.cjs && node tests/test_studio_server.cjs && node tests/test_workflow_scene.mjs && node tests/test_sparse_preview.mjs && node tests/test_video_room.mjs && node tests/test_video_frames.mjs && node tests/test_automatic_modeling.mjs && node tests/test_automatic_room_ui.mjs && node tests/test_modeling_api.cjs && node tests/test_studio_projects.mjs && node tests/test_studio_management.mjs && node tests/test_studio_interactions.mjs && node tests/test_studio_walls.mjs && node tests/test_plan_cad.mjs && node tests/test_plan_symbols.mjs && node tests/test_door_direction.mjs && node tests/test_drawing_editor.mjs && node tests/test_drawing_navigation.mjs && node tests/test_surface_scale_assets.mjs"
   },
   "dependencies": {
     "three": "0.186.1"

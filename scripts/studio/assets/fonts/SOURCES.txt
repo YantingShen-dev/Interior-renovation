@@ -1,0 +1,9 @@
+Bundled typeface sources
+
+Smiley Sans v2.0.1: https://github.com/atelier-anchor/smiley-sans/releases/tag/v2.0.1
+Space Grotesk: https://github.com/floriankarsten/space-grotesk
+Both original license files are included here and embedded in generated HTML.
+Fonts are bundled without modification; no external font requests are needed.
+
+SmileySans-Oblique.woff2 SHA256 4895e7a5b72753b7d4bf090581fbc4375e0ec53484944f369a584588f1eeaf08
+SpaceGrotesk-Variable.woff2 SHA256 8e085aa438094f11487a836652edd5c054fa6a96f63fc7c282105ee3a4b08c07

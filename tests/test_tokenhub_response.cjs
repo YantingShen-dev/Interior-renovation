@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict');
+const {tokenHubResult,tokenHubTask}=require('../scripts/studio/tokenhub-response.cjs');
+assert.equal(tokenHubTask({id:'1234567890123456789',request_id:'trace',status:'queued'}),'1234567890123456789');
+assert.equal(tokenHubTask({data:{id:'123',status:'queued'}}),'123');
+for(const status of ['failed',undefined])assert.throws(()=>tokenHubTask({status,error:{code:'FailedOperation.JobNotFound',message:'job not found'},request_id:'trace-123'}),/FailedOperation.JobNotFound: job not found.*trace-123/);
+assert.throws(()=>tokenHubTask({request_id:'trace-only',status:'queued'}),/缺少有效任务 ID.*trace-only/);
+assert.throws(()=>tokenHubTask({id:1234567890123456789}),/缺少有效/);
+assert.throws(()=>tokenHubResult({status:'failed',message:'quota exhausted'}),/quota exhausted/);
+const completed={status:'completed',data:[{type:'glb',url:'https://example.test/model.glb'}]};assert.deepEqual(tokenHubResult(completed).result,completed);
+console.log('PASS HTTP-200 business errors preserve message/code/request trace; request_id never used as job id; completed data array preserved');

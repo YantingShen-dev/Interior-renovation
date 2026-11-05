@@ -28,7 +28,7 @@ def build(project,demo=False):
     template=(ROOT/'scripts/furniture_editor_template.html.in').read_text(encoding='utf-8')
     for destination in [out/'家具布置.canvas.html']:
         room_url=Path(os.path.relpath(project/'vector_room/房间编辑器.html',destination.parent)).as_posix()
-        content=template.replace('__ROOM_URL__',html.escape(room_url,quote=True)).replace('__FURNITURE_GEOMETRY__',(ROOT/'scripts/furniture_geometry.js').read_text(encoding='utf-8')).replace('__ROOM_GEOMETRY__',(ROOT/'scripts/room_geometry.js').read_text(encoding='utf-8')).replace('__SCENE__',json.dumps(scene,ensure_ascii=False).replace('</','<\\/')).replace('__EDITOR_CODE__',(ROOT/'scripts/furniture_editor.js').read_text(encoding='utf-8'))
+        content=template.replace('__ROOM_URL__',html.escape(room_url,quote=True)).replace('__FURNITURE_GEOMETRY__',(ROOT/'scripts/door_geometry.js').read_text(encoding='utf-8')+'\n'+(ROOT/'scripts/furniture_geometry.js').read_text(encoding='utf-8')).replace('__ROOM_GEOMETRY__',(ROOT/'scripts/room_geometry.js').read_text(encoding='utf-8')).replace('__SCENE__',json.dumps(scene,ensure_ascii=False).replace('</','<\\/')).replace('__EDITOR_CODE__',(ROOT/'scripts/furniture_editor.js').read_text(encoding='utf-8'))
         if any(token in content for token in ['__ROOM_URL__','__FURNITURE_GEOMETRY__','__ROOM_GEOMETRY__','__SCENE__','__EDITOR_CODE__']):raise ValueError('Furniture editor has unresolved build data.')
         destination.write_text(content,encoding='utf-8')
     subprocess.run(['node',str(ROOT/'scripts/studio/build.cjs'),str(project)],check=True)

@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import plan from '../scripts/plan_geometry.js';
+import {moveWallEndpoint} from '../scripts/studio/plan-interactions.mjs';
+import {setupReferenceScale} from '../scripts/studio/reference-scale.mjs';
+import {setupMaterialEditor} from '../scripts/studio/material-editor.mjs';
+import {finishPresets} from '../scripts/studio/finish-library.mjs';
+import {catalogObservedFinishes} from '../scripts/studio/observed-finishes.mjs';
+import {ModelingSession} from '../scripts/studio/modeling-tools.cjs';
+import {upgradeMeshes} from '../scripts/studio/mesh-upgrade.mjs';
+const scene=plan.createScene([[0,0],[4,0],[4,3],[0,3]],3),id=scene.walls[0].id;
+const opening={id:'door',wall_id:id,kind:'door',u:2.5,width:1,bottom:0,height:2};
+const next=moveWallEndpoint(scene.walls,[opening],id,'end',[3,0]);assert.equal(next.openings[0].width,1);assert(next.openings[0].u+1<=3);assert.deepEqual(next.walls[1].start,[3,0]);assert.throws(()=>moveWallEndpoint(scene.walls,[opening],id,'end',[.5,0]));
+const elements={};class Element{constructor(){this.style={};this.dataset={};this.value='';this.children=[];}set innerHTML(html){for(const match of html.matchAll(/id="([^" ]+)"/g))elements[match[1]]=new Element();}querySelector(s){return elements[s.slice(1)];}append(...v){this.children.push(...v);}prepend(){}after(){}replaceChildren(...v){this.children=v;}}
+globalThis.document={createElement:()=>new Element(),querySelector:()=>new Element(),getElementById:id=>elements[id]};
+let callbacks,preview,applied;
+const drawing={state:()=>({selected:[id]}),finish(){},beginReference(c){callbacks=c;},endReference(){},previewReference:p=>preview=p};
+const scale=setupReferenceScale({getScene:()=>scene,apply:n=>{applied=n;},drawing,toast(){}});scale.open();callbacks.click([0,0]);callbacks.click([4,0]);callbacks.move([6,0]);assert.match(elements['scale-live'].textContent,/4000 → 6000 mm/);elements['scale-value'].value='5000';elements['scale-value'].oninput();assert.equal(preview.factor,1.25);assert.match(elements['scale-live'].textContent,/5000 mm/);assert.equal(scene.walls[0].end[0],4);elements['scale-apply'].onclick();assert.equal(applied.walls[0].end[0],5);
+const store={scene:{...scene,assets:finishPresets},selected:id,commit(n){this.scene=n;}};let live=null;const editor=setupMaterialEditor({store,changed:()=>editor.refresh(),toast(){},preview:n=>{live=n;},chooseLibrary(){}});
+editor.refresh();editor.choose(finishPresets.find(a=>a.material_type==='glass'));assert.equal(live.walls[0].surface_material.type,'glass');assert.equal(store.scene.walls[0].surface_material,undefined);elements['surface-scale'].value='200';elements['surface-scale'].oninput();assert.equal(live.walls[0].surface_material.texture_scale,2);elements['surface-apply'].onclick();assert.equal(store.scene.walls[0].surface_material.texture_scale,2);editor.choose(finishPresets[0]);elements['surface-cancel'].onclick();assert.equal(store.scene.walls[0].surface_material.type,'glass');assert.equal(live,null);
+const model=new ModelingSession(scene);const material={object_id:id,type:'paint',color:[.5,.6,.7,1],roughness:.4,metalness:0,opacity:1,transmission:0,material_name:'墙面特殊纹理',pattern:'tile',source_frame:'frame0',bbox:[.1,.1,.3,.4]};model.call('set_material',material);model.call('set_material',{...material,object_id:'floor'});assert.equal(model.scene.assets.length,1);assert.equal(model.scene.assets[0].asset_type,'finish');assert.equal(model.scene.finishes.floor.asset_id,model.scene.walls[0].surface_material.asset_id);const before=structuredClone(model.scene);assert.throws(()=>model.call('set_material',{...material,bbox:[.8,.1,.1,.4]}));assert.deepEqual(model.scene,before);
+model.scene.assets[0].reference_image='data:image/png;base64,AA==';let requests=0;await upgradeMeshes(model.scene,{request:()=>requests++});assert.equal(requests,0);
+const old={...scene,ai_modeling:{},finishes:{floor:{type:'paint',pattern:'tile',color:[.5,.5,.5,1]}}};const migrated=catalogObservedFinishes(old);assert.equal(migrated.assets.length,1);assert(migrated.finishes.floor.asset_id);assert.equal(old.assets.length,0);assert.equal(catalogObservedFinishes(migrated),migrated);
+console.log('PASS endpoint topology/openings, live Scale lengths and numeric preview, material preview/confirm/cancel, observed texture registration/deduplication and no mesh charges for finishes.');

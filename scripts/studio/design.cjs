@@ -1,12 +1,12 @@
 const {StudioState,normalized,copy,F}=require('./state.cjs');
-const digestScene=s=>JSON.stringify({room:s.room,walls:s.walls,openings:s.openings,furniture:s.furniture,assets:s.assets.map(a=>({id:a.id,dimensions:a.dimensions,mount:a.mount}))});
-function context(scene){return {units:'meter',room:scene.room,walls:scene.walls,openings:scene.openings.map(({id,kind,wall_id,u,width,height,bottom,status})=>({id,kind,wall_id,u,width,height,bottom,status})),furniture:scene.furniture,assets:[...scene.assets,...F.presets].map(({id,label,dimensions,mount,style,price_cny})=>({id,label,dimensions,mount,style,price_cny})),clearance_m:scene.layout_settings.clearance_m||.8};}
+const digestScene=s=>JSON.stringify({room:s.room,walls:s.walls,openings:s.openings,furniture:s.furniture,assets:s.assets.map(a=>({id:a.id,dimensions:a.dimensions,mount:a.mount,deleted_at:a.deleted_at,unavailable:a.unavailable,label:a.label,category:a.category,price_cny:a.price_cny}))});
+function context(scene){return {units:'meter',room:scene.room,walls:scene.walls,openings:scene.openings.map(({id,kind,subtype,wall_id,u,width,height,bottom,status,door_direction,open_angle_deg})=>({id,kind,subtype,wall_id,u,width,height,bottom,status,door_direction,open_angle_deg})),door_clearance_zones:F.doorZones(scene,scene.layout_settings.clearance_m||.8),furniture:scene.furniture,assets:[...scene.assets,...F.presets].filter(a=>a.asset_type!=='finish'&&!a.deleted_at&&!a.unavailable).map(({id,label,dimensions,mount,style,price_cny})=>({id,label,dimensions,mount,style,price_cny})),clearance_m:scene.layout_settings.clearance_m||.8};}
 function proposal(scene,answer){
  if(!answer||typeof answer.message!=='string'||!Array.isArray(answer.operations)||answer.operations.length>30)throw new Error('模型须返回 message 与 operations 数组（最多 30 项）');
  const work=new StudioState(scene);let selected=null;
  for(const op of answer.operations){
   if(op.type==='add'){
-   if(!F.asset(work.scene,op.asset_id))throw new Error('AI 引用了家具库中不存在的家具');
+   if(!F.asset(work.scene,op.asset_id)||(F.asset(work.scene,op.asset_id).deleted_at||F.asset(work.scene,op.asset_id).unavailable))throw new Error('AI 引用了家具库中不存在的家具');
    work.add(op.asset_id);selected=work.selected;
    if(op.position||op.rotation_deg!==undefined||op.u!==undefined)patch(work,selected,op);
   }else if(op.type==='update'){if(!work.scene.furniture.some(f=>f.id===op.id))throw new Error('AI 引用了不存在的场景对象');patch(work,op.id,op);}

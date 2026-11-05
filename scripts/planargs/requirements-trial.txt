@@ -1,0 +1,24 @@
+# Use only in the isolated WSL Python 3.10 environment, after torch 2.7.1+cu128.
+# Versions remain provisional until the CUDA and model checks pass.
+numpy==1.26.4
+pycolmap==3.12.6
+opencv-python-headless==4.10.0.84
+open3d==0.19.0
+transformers==4.44.2
+setuptools==69.5.1
+wheel
+roma
+matplotlib
+scipy
+einops
+trimesh
+tensorboard
+plyfile
+lpips
+yapf
+pycocotools
+timm==1.0.9
+addict
+supervision==0.22.0
+iopath
+fvcore
