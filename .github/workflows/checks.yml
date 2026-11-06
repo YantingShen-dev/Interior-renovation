@@ -16,3 +16,4 @@ jobs:
       - run: npm run test:studio
       - run: npm run test:workflow
       - run: npm run test:geometry
+      - run: npm run test:furniture

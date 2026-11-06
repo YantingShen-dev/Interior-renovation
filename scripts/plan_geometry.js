@@ -1,7 +1,9 @@
 /* Wall networks and floor regions shared by drawing, geometry and placement. */
 (function(root){
 const EPS=1e-7;
+const copy=typeof module!=='undefined'&&module.exports?require('./studio/data-copy.cjs').copy:value=>structuredClone(value);
 const area=p=>p.reduce((sum,a,i)=>{const b=p[(i+1)%p.length];return sum+a[0]*b[1]-b[0]*a[1];},0)/2;
+function bounds(scene){const room=scene.room||scene,points=room.regions?.length?room.regions.flat():room.outline||[],origin=room.origin||[0,0];const min=points.length?[0,1].map(k=>Math.min(...points.map(p=>p[k]))):[...origin],max=points.length?[0,1].map(k=>Math.max(...points.map(p=>p[k]))):[origin[0]+room.length,origin[1]+room.width];return {min,max,length:max[0]-min[0],width:max[1]-min[1]};}
 function boundaryDistance(p,poly){return Math.min(...poly.map((a,i)=>{const b=poly[(i+1)%poly.length],dx=b[0]-a[0],dy=b[1]-a[1],d=dx*dx+dy*dy,t=d?Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/d)):0;return Math.hypot(p[0]-a[0]-t*dx,p[1]-a[1]-t*dy);}));}
 function contains(p,poly){if(boundaryDistance(p,poly)<EPS)return true;let inside=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const a=poly[i],b=poly[j];if((a[1]>p[1])!==(b[1]>p[1])&&p[0]<(b[0]-a[0])*(p[1]-a[1])/(b[1]-a[1])+a[0])inside=!inside;}return inside;}
 function intersect(a,b,c,d){const cross=(p,q,r)=>(q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0]);const on=(p,q,r)=>Math.abs(cross(p,q,r))<EPS&&r[0]>=Math.min(p[0],q[0])-EPS&&r[0]<=Math.max(p[0],q[0])+EPS&&r[1]>=Math.min(p[1],q[1])-EPS&&r[1]<=Math.max(p[1],q[1])+EPS;return cross(a,b,c)*cross(a,b,d)<-EPS&&cross(c,d,a)*cross(c,d,b)<-EPS||on(a,b,c)||on(a,b,d)||on(c,d,a)||on(c,d,b);}
@@ -30,7 +32,7 @@ function createScene(points,height=2.8,openings=[],assets=[]){
  const min=[0,1].map(k=>Math.min(...points.map(p=>p[k]))),poly=points.map(p=>p.map((v,k)=>Math.round((v-min[k])*1000)/1000)),ccw=area(poly)>0;
  const length=Math.max(...poly.map(p=>p[0])),width=Math.max(...poly.map(p=>p[1]));if(length>1000||width>1000)throw new Error('单个空间长宽请控制在 1000 米内');
  const walls=poly.map((start,i)=>{const end=poly[(i+1)%poly.length],L=Math.hypot(end[0]-start[0],end[1]-start[1]),dx=(end[0]-start[0])/L,dy=(end[1]-start[1])/L;return {id:'draw_wall_'+i,label:'墙 '+(i+1),kind:'wall',start,end,outward:ccw?[dy,-dx]:[-dy,dx],height,thickness:.12,status:'user_drawn'};});
- return {schema_version:'room-pilot-1',units:'meter',coordinate_system:'RH_Z_UP',room:{length,width,height,outline:poly,dimension_source:'user_drawn',height_confirmed:true},walls,openings:structuredClone(openings),assets:structuredClone(assets),furniture:[],layout_settings:{clearance_m:.8},provenance:{source_video_sha256:'drawn-'+Date.now(),model_type:'user_drawn_outline'},space_review:{accepted:true,notes:[],existing_furniture:[]}};
+ return {schema_version:'room-pilot-1',units:'meter',coordinate_system:'RH_Z_UP',room:{length,width,height,outline:poly,dimension_source:'user_drawn',height_confirmed:true},walls,openings:structuredClone(openings),assets:copy(assets),furniture:[],layout_settings:{clearance_m:.8},provenance:{source_video_sha256:'drawn-'+Date.now(),model_type:'user_drawn_outline'},space_review:{accepted:true,notes:[],existing_furniture:[]}};
 }
 // Split crossings for face discovery only. Original wall IDs stay stable for openings.
 function regions(walls){
@@ -62,5 +64,5 @@ function createWallScene(segments,height=2.8,openings=[],assets=[],options={}){
 }
 function triangulate(poly){const p=area(poly)>0?[...poly]:[...poly].reverse(),out=[],cross=(a,b,c)=>(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);while(p.length>3){let found=false;for(let i=0;i<p.length;i++){const a=p[(i+p.length-1)%p.length],b=p[i],c=p[(i+1)%p.length];if(cross(a,b,c)<=EPS)continue;if(p.some(q=>q!==a&&q!==b&&q!==c&&cross(a,b,q)>=-EPS&&cross(b,c,q)>=-EPS&&cross(c,a,q)>=-EPS))continue;out.push([a,b,c]);p.splice(i,1);found=true;break;}if(!found)throw new Error('地面轮廓无法三角化');}out.push(p);return out;}
 function floorGeometry(poly,z){if(poly.every((p,i)=>Math.abs(p[0]-poly[(i+1)%poly.length][0])<EPS||Math.abs(p[1]-poly[(i+1)%poly.length][1])<EPS))return floorBoxes(poly,z);return triangulate(poly).map(t=>({center:[0,0,0],size:[0,0,0],yaw:0,vertices:[...t,t[2]].map(p=>[...p,z-.025]).concat([...t,t[2]].map(p=>[...p,z+.025]))}));}
-const api={area,contains,boundaryDistance,validate,insideFootprint,insideRegions,floorBoxes,floorGeometry,triangulate,regions,createScene,createWallScene,wallNormal,wallFootprint,intersect};root.RoomPlan=api;if(typeof module!=='undefined')module.exports=api;
+const api={area,bounds,contains,boundaryDistance,validate,insideFootprint,insideRegions,floorBoxes,floorGeometry,triangulate,regions,createScene,createWallScene,wallNormal,wallFootprint,intersect};root.RoomPlan=api;if(typeof module!=='undefined')module.exports=api;
 })(globalThis);

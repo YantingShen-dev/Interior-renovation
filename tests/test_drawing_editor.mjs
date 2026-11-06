@@ -36,7 +36,7 @@ test('window dragging in a vertical work plane updates sill height and is undoab
 test('shared 3D model retains draft world origin and ray picks a wall rather than its edge lines',()=>{const w={id:'wall',start:[-3,2],end:[1,2],thickness:.24,reference_line:'center'},scene=plan.createWallScene([w]),graph=buildRoomGraph(scene);graph.root.position.set(...draftOrigin([w]),0);graph.root.updateMatrixWorld(true);const ray=new THREE.Raycaster(new THREE.Vector3(-1,0,1),new THREE.Vector3(0,1,0)),hit=pickBuilding(ray,graph);assert.equal(hit.object.userData.id,'wall');assert(Math.abs(hit.point.y-1.88)<1e-6);disposeGraph(graph.root);});
 test('wall highlight restores every shared-material face without adding solid outlines',()=>{
  const state=editor.state(),graph=buildRoomGraph(plan.createWallScene(state.walls,state.height,state.openings)),preview=Object.create(ReconstructionPreview.prototype);
- Object.assign(preview,{editing:true,key:JSON.stringify([state.walls,state.openings,state.height]),graph,ghost:new THREE.Group(),renderer:{domElement:{style:{}}}});
+ Object.assign(preview,{editing:true,key:[state.walls,state.openings,state.height,state.finishes,state.furniture,state.assets],graph,ghost:new THREE.Group(),renderer:{domElement:{style:{}}}});
  const colors=new Map();graph.root.traverse(o=>{if(o.isMesh)colors.set(o,o.material.color.getHex());});
  const selected=[state.walls[0].id];preview.sync({...state,selected});let blue=0;graph.entities.get(selected[0]).traverse(o=>{if(o.isMesh){assert.equal(o.material.color.getHexString(),'348ee8');blue++;}});assert.ok(blue>1);
  preview.sync({...state,selected:[]});for(const [mesh,color]of colors)assert.equal(mesh.material.color.getHex(),color);

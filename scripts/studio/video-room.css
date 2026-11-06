@@ -32,6 +32,6 @@
 #automatic-room-dialog .vr-footer,#modeling-report-dialog .vr-footer,#reference-scale-dialog .vr-footer{flex:none;padding:16px 24px;gap:10px;background:#f5f8fc;border-top:1px solid #dce6ef;flex-wrap:wrap}
 #rs-error{color:#a62828}#rs-ratio{font-weight:700;color:#0058a3}
 
-.scan-optional{padding:12px 0;border-top:1px solid #dce6ef;margin-top:18px}.scan-optional>summary{cursor:pointer;font-weight:600;color:#0058a3}
+.room-review-optional{padding:12px 0;border-top:1px solid #dce6ef;margin-top:18px}.room-review-optional>summary{cursor:pointer;font-weight:600;color:#0058a3}
 
 #ar-draft{margin:18px 0;padding:16px;border:1px solid #b9cfe3;border-radius:10px;background:#f5f9fd}#ar-draft h3{margin:0 0 8px}#ar-draft-plan{height:220px;background:#fff;border-radius:8px;margin:12px 0}#ar-draft-plan svg{display:block;width:100%;height:100%}#ar-draft-open{background:#0058a3;color:#fff;padding:10px 14px;border-radius:7px}

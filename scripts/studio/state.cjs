@@ -1,19 +1,20 @@
 /* Model operations shared by the Three.js editor and its offline checks. */
 const G=require('../room_geometry.js'),F=require('../furniture_geometry.js');
-const copy=value=>structuredClone(value),round=v=>Math.round(v*10000)/10000;
+const P=require('../plan_geometry.js');
+const {copy,equal}=require('./data-copy.cjs'),round=v=>Math.round(v*10000)/10000;
 function valid(scene){const errors=G.validate(scene);if(errors.length)throw new Error(errors.join('；'));return scene;}
-function normalized(scene){const value=copy(scene);value.furniture||=[];value.assets||=[];value.layout_settings||={clearance_m:.8};valid(value);for(const f of value.furniture){const pose=F.pose(value,f);f.position=pose.position.map(round);}return value;}
+function normalized(scene){const value=copy(scene);value.furniture||=[];value.assets||=[];value.layout_settings||={clearance_m:.8};for(const f of value.furniture)if(f.mount==='free')f.free_position=true;valid(value);for(const f of value.furniture){const pose=F.pose(value,f);f.position=pose.position.map(round);}return value;}
 function loadStoredDraft(storage,initial){const suffix=initial.provenance.source_video_sha256+':'+(initial.layout_settings?.catalog_revision||'generic'),keys=['space-studio-three-v2:'+suffix,'furniture-layout-v1:'+suffix];for(const [index,key]of keys.entries()){try{const raw=storage.getItem(key);if(!raw)continue;const value=JSON.parse(raw);if(value.schema_version!=='room-pilot-1')continue;return {scene:normalized(value),migrated:index>0};}catch(error){}}return null;}
 function halfSize(f){const a=f.rotation_deg*Math.PI/180;return [Math.abs(Math.cos(a))*f.dimensions[0]/2+Math.abs(Math.sin(a))*f.dimensions[1]/2,Math.abs(Math.sin(a))*f.dimensions[0]/2+Math.abs(Math.cos(a))*f.dimensions[1]/2];}
 function snapFurniture(scene,source,{grid=.05,enabled=true,axis=null}={}){
  const f=copy(source),hints=[];if(!enabled)return {furniture:f,hints};
  if(f.mount==='wall'&&!f.free_position){if(axis!=='Z')f.u=round(Math.round(f.u/grid)*grid);if(axis==='Z')f.position[2]=round(Math.round(f.position[2]/grid)*grid);return {furniture:f,hints:['沿墙吸附']};}
- if(f.free_position&&(!axis||axis==='Z'))f.position[2]=round(Math.round(f.position[2]/grid)*grid);
- const half=halfSize(f);
+ if((f.free_position||f.mount==='free')&&(!axis||axis==='Z'))f.position[2]=round(Math.round(f.position[2]/grid)*grid);
+ const half=halfSize(f),bounds=P.bounds(scene);
  for(const [k,key]of [[0,'X'],[1,'Y']]){
   if(axis&&axis!==key)continue;
   const original=f.position[k];f.position[k]=round(Math.round(original/grid)*grid);
-  const targets=[{value:half[k],label:'贴墙'},{value:(k===0?scene.room.length:scene.room.width)-half[k],label:'贴墙'}];
+  const targets=[{value:bounds.min[k]+half[k],label:'贴墙'},{value:bounds.max[k]-half[k],label:'贴墙'}];
   for(const other of scene.furniture.filter(o=>o.id!==f.id)){
    const p=F.pose(scene,other),ext=halfSize({...other,rotation_deg:p.rotation_deg});
    targets.push({value:p.position[k],label:'中心对齐'},{value:p.position[k]-ext[k]-half[k],label:'边缘对齐'},{value:p.position[k]+ext[k]+half[k],label:'边缘对齐'});
@@ -32,15 +33,28 @@ function placementScore(scene,f){
  return score;
 }
 function place(scene,source){
+ // Interactive layout accepts overlaps and out-of-room staging. Do not scan
+ // thousands of collision-free candidates before letting the user place it.
+ if(scene.layout_settings?.free_placement){const bounds=P.bounds(scene);return {...copy(source),free_position:true,position:[(bounds.min[0]+bounds.max[0])/2,(bounds.min[1]+bounds.max[1])/2,source.free_position?source.position[2]:source.mount==='ceiling'?scene.room.height-source.dimensions[2]:0]};}
  let best=null,score=Infinity;
  const check=f=>{const value=placementScore(scene,f);if(value<score){score=value;best=copy(f);}};
  if(source.mount==='wall'&&!source.free_position){
   for(const wall of scene.walls)for(let u=source.dimensions[0]/2+.01;u<=G.length(wall)-source.dimensions[0]/2;u+=.15)check({...source,wall_id:wall.id,u,position:[0,0,Math.max(0,Math.min(1.2,scene.room.height-source.dimensions[2]))]});
- }else for(const angle of [source.rotation_deg,source.rotation_deg+90])for(let y=.05;y<scene.room.width;y+=Math.max(.15,scene.room.width/24))for(let x=.05;x<scene.room.length;x+=Math.max(.15,scene.room.length/28))check({...source,rotation_deg:angle,position:[round(x),round(y),source.free_position?source.position[2]:source.mount==='ceiling'?scene.room.height-source.dimensions[2]:0]});
+ }else{
+  const angles=[source.rotation_deg,source.rotation_deg+90,...[...scene.walls].sort((a,b)=>G.length(b)-G.length(a)).slice(0,4).flatMap(w=>{const a=Math.atan2(w.end[1]-w.start[1],w.end[0]-w.start[0])*180/Math.PI;return [a,a+90];})].map(a=>round((a%180+180)%180));
+  const boxes=[P.bounds(scene),...(scene.room.regions||[]).map(outline=>P.bounds({outline}))];
+  const axis=(lo,hi,n)=>hi<lo-1e-7?[]:[...new Set([(lo+hi)/2,lo,hi,...Array.from({length:n+1},(_,i)=>lo+(hi-lo)*i/n)].map(v=>round(v)))];
+  for(const angle of new Set(angles)){
+   const half=halfSize({...source,rotation_deg:angle});
+   for(const box of boxes){const xs=axis(box.min[0]+half[0],box.max[0]-half[0],28),ys=axis(box.min[1]+half[1],box.max[1]-half[1],24);
+    for(const y of ys)for(const x of xs){check({...source,rotation_deg:angle,position:[x,y,source.free_position?source.position[2]:source.mount==='ceiling'?scene.room.height-source.dimensions[2]:0]});if(score===0)return best;}
+   }
+  }
+ }
  return best;
 }
 function fromTransform(scene,id,transform,mode,{grid=.05,snap=true,axis=null}={}){
- const next=copy(scene),f=next.furniture.find(f=>f.id===id);if(!f)throw new Error('家具不存在');let hints=[];
+ const next={...scene,furniture:scene.furniture.map(f=>copy(f))},f=next.furniture.find(f=>f.id===id);if(!f)throw new Error('家具不存在');if(f.mount==='free')f.free_position=true;let hints=[];
  if(mode==='translate'){
   if(f.mount==='wall'&&!f.free_position){const wall=scene.walls.find(w=>w.id===f.wall_id),L=G.length(wall),t=wall.end.map((v,k)=>(v-wall.start[k])/L);f.u=(transform.position[0]-wall.start[0])*t[0]+(transform.position[1]-wall.start[1])*t[1];f.position[2]=transform.position[2];}
   else f.position=[transform.position[0],transform.position[1],f.free_position?transform.position[2]:f.position[2]];
@@ -49,26 +63,29 @@ function fromTransform(scene,id,transform,mode,{grid=.05,snap=true,axis=null}={}
   if(f.mount==='wall'&&!f.free_position)return {scene:next,hints:['挂墙家具沿墙定向'],errors:[]};
   let degrees=transform.rotation*180/Math.PI;if(snap)degrees=Math.round(degrees/15)*15;f.rotation_deg=round((degrees%360+360)%360);
  }else if(mode==='scale'){f.dimensions=f.dimensions.map((v,k)=>round(v*transform.scale[k]));f.dimension_source='user_input';}
- const errors=G.validate(next);return {scene:next,hints,errors};
+ const errors=F.validate({...next,furniture:[f]},{assets:false});return {scene:next,hints,errors};
 }
 class StudioState{
  constructor(initial){this.initial=normalized(initial);this.scene=copy(this.initial);this.history=[];this.future=[];this.selected=this.scene.furniture[0]?.id||null;this.serial=0;}
  current(){return this.scene.furniture.find(f=>f.id===this.selected);}
  id(){return 'furniture_'+Date.now()+'_'+(++this.serial);}
- commit(next,before=this.scene){next=normalized(next);if(JSON.stringify(next)===JSON.stringify(before))return false;this.history.push(copy(before));if(this.history.length>60)this.history.shift();this.future=[];this.scene=next;return true;}
+ commit(next,before=this.scene){next=normalized(next);if(equal(next,before))return false;this.history.push(copy(before));if(this.history.length>60)this.history.shift();this.future=[];this.scene=next;return true;}
  update(id,patch){const next=copy(this.scene),f=next.furniture.find(f=>f.id===id);if(!f)throw new Error('未选择家具');const changedSize=patch.dimensions&&patch.dimensions.some((v,k)=>Math.abs(v-f.dimensions[k])>1e-8);Object.assign(f,copy(patch));if(changedSize)f.dimension_source='user_input';this.commit(next);return f;}
  add(assetId,point=null){
-  const asset=F.asset(this.scene,assetId);if(!asset)throw new Error('家具库中没有这个对象');if(asset.deleted_at||asset.unavailable)throw new Error('该资产已删除');if(asset.asset_type==='finish')throw new Error('请在硬装库中将材质应用到墙面或地面');
-  let f={id:this.id(),kind:'furniture',label:asset.label,asset_id:asset.id,dimensions:[...asset.dimensions],position:[0,0,0],rotation_deg:0,mount:asset.mount,dimension_source:asset.dimension_source||'preset_unverified',...(asset.source_url?{source_url:asset.source_url}: {})};
-  if(point&&f.mount!=='wall'){f.position=[point[0],point[1],f.mount==='floor'?0:this.scene.room.height-f.dimensions[2]];f=snapFurniture(this.scene,f).furniture;if(G.validate({...this.scene,furniture:[...this.scene.furniture,f]}).length)throw new Error('此位置放不下该家具，请换一个位置');}
-  else {f=place(this.scene,f);if(!f)throw new Error('当前房间放不下这个尺寸的家具');}
+  const asset=this.scene.assets.find(a=>a.id===assetId);if(!asset)throw new Error('家具库中没有这个对象');if(asset.deleted_at||asset.unavailable)throw new Error('该资产已删除');if(asset.asset_type==='finish')throw new Error('请在硬装库中将材质应用到墙面或地面');
+  const unrestricted=!!this.scene.layout_settings?.free_placement;
+  if(!unrestricted&&asset.dimensions[2]>this.scene.room.height+1e-7)throw new Error('家具高度 '+round(asset.dimensions[2]*100)+' cm 超过层高 '+this.scene.room.height+' m');
+  let f={id:this.id(),kind:'furniture',label:asset.label,asset_id:asset.id,dimensions:[...asset.dimensions],position:[0,0,0],rotation_deg:0,mount:asset.mount,...(asset.mount==='free'?{free_position:true}:{}),dimension_source:asset.dimension_source||'preset_unverified',...(asset.source_url?{source_url:asset.source_url}: {})};
+  if(unrestricted){f.free_position=true;if(f.mount==='ceiling')f.position[2]=this.scene.room.height-f.dimensions[2];else if(f.mount==='wall')f.position[2]=Math.max(0,Math.min(1.2,this.scene.room.height-f.dimensions[2]));}
+  if(point&&(unrestricted||f.mount!=='wall')){f.position=[point[0],point[1],f.mount==='ceiling'?this.scene.room.height-f.dimensions[2]:f.free_position?(point[2]??f.position[2]):0];f=snapFurniture(this.scene,f).furniture;const errors=G.validate({...this.scene,furniture:[...this.scene.furniture,f]});if(errors.length)throw new Error(unrestricted?errors.join('；'):'此位置放不下该家具，请换一个位置');}
+  else {f=place(this.scene,f);if(!f)throw new Error('未找到有效放置位置：家具 '+asset.dimensions.map(v=>round(v*100)).join(' × ')+' cm；房间 '+[this.scene.room.length,this.scene.room.width,this.scene.room.height].join(' × ')+' m。请检查轮廓、家具尺寸或调整朝向。');}
   if(this.scene.layout_settings.free_placement){const pose=F.pose(this.scene,f);f.position=pose.position;f.rotation_deg=pose.rotation_deg;f.free_position=true;}const next=copy(this.scene);next.furniture.push(f);this.commit(next);this.selected=f.id;return f;
  }
- duplicate(){const source=this.current();if(!source)throw new Error('先选择一件家具');const f=place(this.scene,{...copy(source),id:this.id(),label:source.label+' 副本'});if(!f)throw new Error('没有可复制到的位置');const next=copy(this.scene);next.furniture.push(f);this.commit(next);this.selected=f.id;return f;}
+ duplicate(){const source=this.current();if(!source)throw new Error('先选择一件家具');if(!this.scene.assets.some(a=>a.id===source.asset_id&&!a.deleted_at&&!a.unavailable))throw new Error('该资产已从仓库移除，不能复制');const f=place(this.scene,{...copy(source),id:this.id(),label:source.label+' 副本'});if(!f)throw new Error('没有可复制到的位置');const next=copy(this.scene);next.furniture.push(f);this.commit(next);this.selected=f.id;return f;}
  remove(){if(!this.current())return;const next=copy(this.scene);next.furniture=next.furniture.filter(f=>f.id!==this.selected);this.commit(next);this.selected=null;}
  undo(){if(!this.history.length)return false;this.future.push(copy(this.scene));this.scene=this.history.pop();return true;}
  redo(){if(!this.future.length)return false;this.history.push(copy(this.scene));this.scene=this.future.pop();return true;}
- resizeRoom(length,width,height){const next=copy(this.scene),sx=length/next.room.length,sy=width/next.room.width;next.room={...next.room,length,width,height,dimension_source:'editor_user_input',height_confirmed:false};if(next.room.regions)next.room.regions=next.room.regions.map(poly=>poly.map(([x,y])=>[x*sx,y*sy]));if(next.room.outline)next.room.outline=next.room.outline.map(([x,y])=>[x*sx,y*sy]);for(const wall of next.walls){wall.start=[wall.start[0]*sx,wall.start[1]*sy];wall.end=[wall.end[0]*sx,wall.end[1]*sy];wall.height=height;}this.commit(next);}
+ resizeRoom(length,width,height){const next=copy(this.scene),origin=P.bounds(next).min,sx=length/next.room.length,sy=width/next.room.width,scale=([x,y])=>[origin[0]+(x-origin[0])*sx,origin[1]+(y-origin[1])*sy];next.room={...next.room,length,width,height,dimension_source:'editor_user_input',height_confirmed:false};if(next.room.regions)next.room.regions=next.room.regions.map(poly=>poly.map(scale));if(next.room.outline)next.room.outline=next.room.outline.map(([x,y])=>[x*sx,y*sy]);for(const wall of next.walls){wall.start=scale(wall.start);wall.end=scale(wall.end);wall.height=height;}this.commit(next);}
  analyze(){return F.analyze(this.scene,{clearance:this.scene.layout_settings.clearance_m||.8});}
 }
 module.exports={G,F,StudioState,snapFurniture,placementScore,place,halfSize,normalized,valid,copy,round,fromTransform,loadStoredDraft};

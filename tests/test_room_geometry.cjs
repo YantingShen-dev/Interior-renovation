@@ -1,6 +1,6 @@
 const assert=require('assert/strict'),fs=require('fs'),path=require('path');
 const G=require('../scripts/room_geometry.js');
-const scene=JSON.parse(fs.readFileSync(process.argv[2]||path.join(__dirname,'../重建小样/room_editable_v1/room.scene.json'),'utf8'));
+const scene=JSON.parse(fs.readFileSync(process.argv[2]||path.join(__dirname,'../examples/room.scene.json'),'utf8'));
 let count=0;function test(name,fn){fn();count++;console.log('PASS '+name);}
 function clone(){return structuredClone(scene);}
 function intersectsWall(s,id,origin,dir){const part=G.buildParts(s).find(p=>p.parent===id),p=G.partTriangles(part).positions;for(let i=0;i<p.length;i+=9){const a=p.slice(i,i+3),b=p.slice(i+3,i+6),c=p.slice(i+6,i+9);const sub=(x,y)=>x.map((v,j)=>v-y[j]),dot=(x,y)=>x.reduce((sum,v,j)=>sum+v*y[j],0),cross=(x,y)=>[x[1]*y[2]-x[2]*y[1],x[2]*y[0]-x[0]*y[2],x[0]*y[1]-x[1]*y[0]];const e1=sub(b,a),e2=sub(c,a),h=cross(dir,e2),det=dot(e1,h);if(Math.abs(det)<1e-8)continue;const t=sub(origin,a),u=dot(t,h)/det;if(u<0||u>1)continue;const q=cross(t,e1),v=dot(dir,q)/det;if(v<0||u+v>1)continue;const distance=dot(e2,q)/det;if(distance>0&&distance<.5)return true;}return false;}

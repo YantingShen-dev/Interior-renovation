@@ -5,15 +5,21 @@ import {Viewport} from '../scripts/studio/viewport.mjs';
 
 // Preview lighting follows offset rooms and the window-facing side, without editing geometry.
 const world=new THREE.Scene(),lighting=addStudioLighting(world),original=lighting.sun.position.clone();
+assert.equal(lighting.sun.castShadow,false,'layout starts without sun shadows');
+const basicWorld=new THREE.Scene(),basicRenderer={shadowMap:{}},basicLighting=addStudioLighting(basicWorld,basicRenderer);assert.equal(basicRenderer.shadowMap.enabled,false);assert.equal(basicWorld.environment,null,'layout must not allocate the reflection environment');assert.equal(basicLighting.sun.castShadow,false);
 const data={room:{length:18,width:7,height:3,origin:[22,-9]},walls:[{id:'north',start:[22,-2],end:[40,-2]}],openings:[{kind:'window',wall_id:'north',u:4,width:3,height:2}]};
 const before=JSON.stringify(data);
 lighting.setPreview(true,data);
+assert.equal(lighting.sun.castShadow,true);
 assert.equal(lighting.sun.target.position.x,31);assert.equal(lighting.sun.target.position.y,-5.5);
 assert(lighting.sun.position.y>lighting.sun.target.position.y,'daylight comes from the window side');
 assert(lighting.sun.shadow.camera.right>Math.hypot(18,7)/2,'shadow coverage fits a larger room');
 assert(lighting.sun.shadow.camera.far>24);
 assert.equal(JSON.stringify(data),before);
 lighting.setPreview(false,data);assert(lighting.sun.position.equals(original));assert.equal(world.environmentIntensity,1);assert.equal(lighting.sun.shadow.camera.far,24);
+assert.equal(lighting.sun.castShadow,false);
+const off={renderPreview:false,store:{scene:data},environment:{setPreview(){assert.fail('changing sun parameters must not enable rendering');}}};Viewport.prototype.previewSun.call(off,{azimuth:30,elevation:45});assert.equal(off.renderPreview,false);
+const previousWindow=globalThis.window;globalThis.window={devicePixelRatio:1};try{let disposed=0,reported;const helper={visible:false},view={renderPreview:true,quickRender:{dispose(){disposed++;}},grid:{visible:false},zones:{visible:false},environment:{grid:{visible:false},setPreview(enabled){assert.equal(enabled,false);}},gizmo:{getHelper:()=>helper},renderer:{setPixelRatio(){}},setTool(){},updateSelection(){},resize(){},store:{scene:data},events:{renderMode:value=>reported=value}};Viewport.prototype.setRenderPreview.call(view,false);assert.equal(disposed,1);assert.equal(view.quickRender,null);assert.equal(view.renderPreview,false);assert.equal(reported,false);}finally{globalThis.window=previousWindow;}
 const viewport={renderer:{toneMappingExposure:1.05}};
 for(const [input,expected] of [[4,4],[.1,.1],[12,4],[-2,.1],[NaN,.1],[1.05,1.05]])assert.equal(Viewport.prototype.setExposure.call(viewport,input),expected);
 assert.equal(viewport.renderer.toneMappingExposure,1.05);

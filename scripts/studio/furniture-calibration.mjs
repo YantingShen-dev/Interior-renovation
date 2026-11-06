@@ -4,6 +4,7 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {initialDimensions} from './furniture-scale-math.mjs';
 import {FurnitureScaleCommand} from './furniture-scale-command.mjs';
+import {captureAssetCover} from './asset-cover.mjs';
 
 export async function calibrateFurniture(glb,hints,onSave,options={}){
  const dialog=document.createElement('dialog');dialog.className='furniture-scale-dialog';
@@ -26,16 +27,16 @@ export async function calibrateFurniture(glb,hints,onSave,options={}){
  </div></div><div class="furniture-scale-footer"><button class="primary-button" data-action="save" disabled>${options.editing?'保存尺寸':'确认尺寸并入库'}</button></div>`;
  document.body.append(dialog);dialog.showModal();
  const q=s=>dialog.querySelector(s),host=q('.furniture-scale-view'),labels=q('.furniture-scale-labels'),command=new FurnitureScaleCommand();
- let renderer,orbit,scene,root,line,bounds,handles,guide,observer,disposed=false,initial,dims,native,origin=[0,0,0],history=[],mode=3,hover=null,down=null;
+ let renderer,orbit,scene,root,line,bounds,handles,guide,observer,disposed=false,initial,dims,native,origin=[0,0,0],history=[],mode=3,hover=null,down=null,needsRender=true,lastRender=-Infinity;
  const note=text=>q('[data-note]').textContent=text,active=()=>command.stage!=='idle';
  q('[data-confirm]').checked=!!options.confirmed;
  const release=o=>{o?.geometry?.dispose();o?.material?.dispose();};
- function cleanup(){disposed=true;observer?.disconnect();orbit?.dispose();renderer?.setAnimationLoop(null);scene?.traverse(o=>{o.geometry?.dispose();for(const m of o.material?(Array.isArray(o.material)?o.material:[o.material]):[]){for(const v of Object.values(m))if(v?.isTexture)v.dispose();m.dispose();}});renderer?.dispose();dialog.remove();options.onClose?.();}
+ function cleanup(){disposed=true;observer?.disconnect();orbit?.dispose();renderer?.setAnimationLoop(null);scene?.traverse(o=>{o.geometry?.dispose();for(const m of o.material?(Array.isArray(o.material)?o.material:[o.material]):[]){for(const v of Object.values(m))if(v?.isTexture)v.dispose();m.dispose();}});renderer?.dispose();renderer?.forceContextLoss();dialog.remove();options.onClose?.();}
  dialog.addEventListener('close',cleanup,{once:true});q('[data-action=close]').onclick=()=>dialog.close();
  try{
- renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));host.prepend(renderer.domElement);
+ renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));host.prepend(renderer.domElement);
  scene=new THREE.Scene();scene.background=new THREE.Color('#f3f7fc');scene.add(new THREE.HemisphereLight(0xffffff,0x78899a,3));const sun=new THREE.DirectionalLight(0xffffff,3);sun.position.set(3,-4,6);scene.add(sun);
- const camera=new THREE.PerspectiveCamera(42,1,.001,1000);camera.up.set(0,0,1);orbit=new OrbitControls(camera,renderer.domElement);orbit.enableDamping=true;orbit.mouseButtons={LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.ROTATE,RIGHT:THREE.MOUSE.PAN};
+ const camera=new THREE.PerspectiveCamera(42,1,.001,1000);camera.up.set(0,0,1);orbit=new OrbitControls(camera,renderer.domElement);orbit.enableDamping=true;orbit.addEventListener('change',()=>needsRender=true);orbit.mouseButtons={LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.ROTATE,RIGHT:THREE.MOUSE.PAN};
  const gltf=await new GLTFLoader().loadAsync(glb);if(disposed){gltf.scene.traverse(o=>{o.geometry?.dispose();for(const m of o.material?(Array.isArray(o.material)?o.material:[o.material]):[])m.dispose();});return;}
  root=new THREE.Group();const object=gltf.scene;object.rotation.x=Math.PI/2;object.updateMatrixWorld(true);const box=new THREE.Box3().setFromObject(object),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());native=size.toArray();object.position.set(-center.x,-center.y,-box.min.z);root.add(object);scene.add(root);
  initial=initialDimensions(native,hints);dims=[...initial];
@@ -48,13 +49,13 @@ export async function calibrateFurniture(glb,hints,onSave,options={}){
   labelPoints=edges.map(([a,b])=>new THREE.Vector3(...a).add(new THREE.Vector3(...b)).multiplyScalar(.5).add(new THREE.Vector3(...origin)));
  }
  function corners(d=dims,o=origin){const result=[];for(const x of [-.5,0,.5])for(const y of [-.5,0,.5])for(const z of [0,.5,1])if([x===0,y===0,z===.5].filter(Boolean).length<=1)result.push(new THREE.Vector3(x*d[0]+o[0],y*d[1]+o[1],z*d[2]+o[2]));return result;}
- function update(){root.scale.set(...dims.map((d,i)=>d/native[i]));root.position.set(...origin);root.updateMatrixWorld(true);ruler();
+ function update(){needsRender=true;root.scale.set(...dims.map((d,i)=>d/native[i]));root.position.set(...origin);root.updateMatrixWorld(true);ruler();
   spans.forEach((s,i)=>{s.textContent=['宽','深','高'][i]+' '+(dims[i]*100).toFixed(1)+' cm';q('.scale-dimensions').children[i].querySelector('output').textContent=(dims[i]*100).toFixed(1);});
   if(bounds){scene.remove(bounds);release(bounds);}bounds=new THREE.Box3Helper(new THREE.Box3(new THREE.Vector3(origin[0]-dims[0]/2,origin[1]-dims[1]/2,origin[2]),new THREE.Vector3(origin[0]+dims[0]/2,origin[1]+dims[1]/2,origin[2]+dims[2])),0xe8b700);bounds.material.depthTest=false;bounds.renderOrder=8;bounds.visible=active();scene.add(bounds);
   if(handles){scene.remove(handles);release(handles);}handles=new THREE.Points(new THREE.BufferGeometry().setFromPoints(corners()),new THREE.PointsMaterial({color:0x0058a3,size:6,sizeAttenuation:false,depthTest:false}));handles.renderOrder=12;handles.visible=active()&&command.stage!=='target';scene.add(handles);
  }
  function fit(){const d=Math.max(...dims)*1.65;orbit.target.set(origin[0],origin[1],origin[2]+dims[2]/2);camera.position.copy(orbit.target).add(new THREE.Vector3(d,-d,d*.65));orbit.update();}
- function state(){const stage=command.stage;
+ function state(){needsRender=true;const stage=command.stage;
   q('[data-step]').textContent={idle:'选择缩放方式，开始操作',base:'① 指定基点 · Enter 使用底面中心',reference:'② 第一参照点 · 或输入缩放倍率',target:'③ 第二参照点 · 移动鼠标预览，点击 / Enter 确认'}[stage];
   q('[data-action=cancel]').disabled=!active();q('[data-action=save]').disabled=active();q('[data-action=undo]').disabled=!active()&&!history.length;
   q('[data-value]').disabled=stage==='base'||stage==='idle';q('[data-action=enter]').disabled=stage==='idle';
@@ -62,7 +63,7 @@ export async function calibrateFurniture(glb,hints,onSave,options={}){
   orbit.mouseButtons.LEFT=active()?null:THREE.MOUSE.ROTATE;host.style.cursor=active()?'crosshair':'grab';
   if(bounds)bounds.visible=active();if(handles)handles.visible=active()&&stage!=='target';
  }
- function clearGuide(){if(guide){scene.remove(guide);guide.traverse(release);guide=null;}hover=null;q('.scale-snap-tip').hidden=true;}
+ function clearGuide(){needsRender=true;if(guide){scene.remove(guide);guide.traverse(release);guide=null;}hover=null;q('.scale-snap-tip').hidden=true;}
  function drawGuide(point){clearGuide();guide=new THREE.Group();scene.add(guide);const base=command.base&&new THREE.Vector3(...command.base);
   if(base){const ball=new THREE.Mesh(new THREE.SphereGeometry(Math.max(...dims)*.008,10,6),new THREE.MeshBasicMaterial({color:0xf2b900,depthTest:false}));ball.position.copy(base);ball.renderOrder=20;guide.add(ball);}
   if(point&&base){const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints([base,point]),new THREE.LineBasicMaterial({color:0xe29a00,depthTest:false}));l.renderOrder=20;guide.add(l);}
@@ -112,8 +113,15 @@ export async function calibrateFurniture(glb,hints,onSave,options={}){
  renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
  dialog.addEventListener('cancel',e=>{if(active()){e.preventDefault();cancel();}});
  dialog.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==='z'){e.preventDefault();e.stopPropagation();if(!e.repeat)undo();return;}if(e.key==='Enter'&&active()){e.preventDefault();enter();}else if(active()&&['reference','target'].includes(command.stage)&&!['INPUT','SELECT','BUTTON'].includes(e.target.tagName)&&/^[0-9.]$/.test(e.key)){e.preventDefault();q('[data-value]').focus();q('[data-value]').value=e.key;numeric();}});
- q('[data-action=save]').onclick=async()=>{if(active())return;q('[data-action=save]').disabled=true;try{await onSave([...dims],q('[data-confirm]').checked);dialog.close();}catch(e){note(e.message);q('[data-action=save]').disabled=false;}};
- observer=new ResizeObserver(()=>{const w=host.clientWidth,h=host.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();});observer.observe(host);update();fit();state();q('[data-mode="3"]').setAttribute('aria-pressed','true');note('选择单轴、双轴或三轴开始；当前尺寸'+(options.confirmed?'已实测校准。':'仍为暂估。'));
- renderer.setAnimationLoop(()=>{if(!dialog.open)return;orbit.update();renderer.render(scene,camera);positionDimensionLabels(labelPoints.map((point,i)=>({point,node:spans[i]})),camera,host);});
+ q('[data-action=save]').onclick=async()=>{
+  if(active())return;q('[data-action=save]').disabled=true;
+  try{
+   let cover=null;
+   if(options.captureCover){const helpers=[line,bounds,handles,guide].filter(Boolean),visible=helpers.map(o=>o.visible);try{helpers.forEach(o=>o.visible=false);cover=captureAssetCover({graph:{},renderer,camera,orbit,world:scene},dims).image;}catch{/* A thumbnail failure must not prevent importing a valid model. */}finally{helpers.forEach((o,i)=>o.visible=visible[i]);}}
+   await onSave([...dims],q('[data-confirm]').checked,cover);dialog.close();
+  }catch(e){note(e.message);q('[data-action=save]').disabled=false;}
+ };
+ observer=new ResizeObserver(()=>{needsRender=true;const w=host.clientWidth,h=host.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();});observer.observe(host);update();fit();state();q('[data-mode="3"]').setAttribute('aria-pressed','true');note('选择单轴、双轴或三轴开始；当前尺寸'+(options.confirmed?'已实测校准。':'仍为暂估。'));
+ renderer.setAnimationLoop(time=>{if(!dialog.open||document.hidden)return;orbit.update();if(!needsRender||time-lastRender<1000/40)return;renderer.render(scene,camera);positionDimensionLabels(labelPoints.map((point,i)=>({point,node:spans[i]})),camera,host);needsRender=false;lastRender=time;});
  }catch(e){note('预览加载失败：'+e.message+'。关闭后可重新打开，模型不会自动入库。');}
 }

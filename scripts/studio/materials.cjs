@@ -1,3 +1,4 @@
+const {copy}=require('./data-copy.cjs');
 const presets={
  matte:{roughness:.85,metalness:0,opacity:1,transmission:0},
  paint:{roughness:.4,metalness:0,opacity:1,transmission:0},
@@ -14,7 +15,7 @@ function validate(material){
  return material;
 }
 function apply(scene,id,material){
- const next=structuredClone(scene);if(material)validate(material);
+ const next=copy(scene);if(material)validate(material);
  const item=entity(next,id);
  if(item){if(material)item.surface_material=structuredClone(material);else delete item.surface_material;}
  else if(['floor','ceiling'].includes(id)){next.finishes||={};if(material)next.finishes[id]=structuredClone(material);else delete next.finishes[id];}

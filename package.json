@@ -4,15 +4,21 @@
   "private": true,
   "scripts": {
     "build:studio": "node scripts/studio/build.cjs",
-    "test:studio": "node tests/test_studio_state.cjs && node tests/test_studio_scene.mjs && node tests/test_studio_artifact.cjs && node tests/test_studio_ui.cjs",
+    "test:studio": "node tests/test_autosave.mjs && node tests/test_scene_storage.mjs && node tests/test_studio_state.cjs && node tests/test_studio_scene.mjs && node tests/test_studio_artifact.cjs && node tests/test_studio_ui.cjs && node tests/test_asset_cover.mjs && node tests/test_warehouse_placement.cjs && node tests/test_display_performance.mjs && node tests/test_quick_render.mjs",
     "test:geometry": "node tests/test_furniture_geometry.cjs && node tests/test_room_geometry.cjs && node tests/test_studio_plan.cjs",
-    "start": "node scripts/studio/server.cjs",
-    "test:workflow": "node tests/test_provider_config.cjs && node tests/test_key_field.mjs && node tests/test_workflow.cjs && node tests/test_studio_server.cjs && node tests/test_workflow_scene.mjs && node tests/test_sparse_preview.mjs && node tests/test_video_room.mjs && node tests/test_video_frames.mjs && node tests/test_automatic_modeling.mjs && node tests/test_automatic_room_ui.mjs && node tests/test_modeling_api.cjs && node tests/test_studio_projects.mjs && node tests/test_studio_management.mjs && node tests/test_studio_interactions.mjs && node tests/test_studio_walls.mjs && node tests/test_plan_cad.mjs && node tests/test_plan_symbols.mjs && node tests/test_door_direction.mjs && node tests/test_drawing_editor.mjs && node tests/test_drawing_navigation.mjs && node tests/test_surface_scale_assets.mjs"
+    "start": "node --use-env-proxy scripts/studio/server.cjs",
+    "test:workflow": "node tests/test_design_stream.mjs && npm run test:images && node tests/test_provider_config.cjs && node tests/test_key_field.mjs && node tests/test_workflow.cjs && node tests/test_studio_server.cjs && node tests/test_workflow_scene.mjs && node tests/test_video_room.mjs && node tests/test_video_frames.mjs && node tests/test_video_extract.cjs && node tests/test_video_sampling.cjs && node tests/test_automatic_modeling.mjs && node tests/test_automatic_room_ui.mjs && node tests/test_modeling_api.cjs && node tests/test_studio_projects.mjs && node tests/test_studio_management.mjs && node tests/test_studio_interactions.mjs && node tests/test_studio_walls.mjs && node tests/test_plan_cad.mjs && node tests/test_plan_symbols.mjs && node tests/test_door_direction.mjs && node tests/test_drawing_editor.mjs && node tests/test_drawing_navigation.mjs && node tests/test_surface_scale_assets.mjs",
+    "test:images": "node tests/test_image_providers.cjs && node tests/test_render_client.mjs && node tests/test_image_provider_ui.mjs",
+    "test:furniture": "node tests/test_hunyuan_network.cjs && node tests/test_tokenhub_response.cjs && node tests/test_mesh_providers.cjs && node tests/test_mesh_recovery.cjs && node tests/test_mesh_multiview.cjs && node tests/test_furniture_references.cjs"
   },
   "dependencies": {
     "three": "0.186.1"
   },
   "devDependencies": {
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "fake-indexeddb": "6.2.7"
+  },
+  "engines": {
+    "node": ">=24.12.0"
   }
 }

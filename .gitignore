@@ -1,5 +1,5 @@
 .venv/
-/planargs.local.json
+/*.local.json
 .cache/
 node_modules/
 __pycache__/
@@ -10,21 +10,13 @@ __pycache__/
 # Runtime data and private captures stay on the machine.
 /现场素材/
 /本地空间/
-/单视频流程/*
-!/单视频流程/试验01/
-/单视频流程/试验01/*
-!/单视频流程/试验01/furniture_layout/
-!/单视频流程/试验01/vector_room/
-/单视频流程/试验01/furniture_layout/*
-!/单视频流程/试验01/furniture_layout/room.scene.json
-/单视频流程/试验01/vector_room/*
-!/单视频流程/试验01/vector_room/room.scene.json
-/重建小样/*
-!/重建小样/room_editable_v1/
-/重建小样/room_editable_v1/*
-!/重建小样/room_editable_v1/room.scene.json
+/单视频流程/
+/重建小样/
+/资产/
+/淘宝家具/
+/[0-9][0-9]-*.md
 
-# Build locally; these HTML pages embed local scan evidence.
+# Generated entry pages and earlier local exports.
 /打开*.html
 /扫描重建与证据.html
 *.log

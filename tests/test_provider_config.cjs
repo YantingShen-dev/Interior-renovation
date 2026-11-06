@@ -22,13 +22,14 @@ assert.throws(()=>save({chat_provider:'unknown'}),/未知/);
 assert.throws(()=>save({chat_provider:'custom',chat_base:'https://user:secret@example.test/v1'}),/API 地址/);
 assert.throws(()=>save({chat_key:'key\nINJECTED=true'}),/配置格式/);
 console.log('PASS a changed custom host cannot inherit a key and invalid settings are rejected');
-e=save({image_provider:'gemini',image_model:'gemini-nano-banana-2.1',image_key:'not-accepted'});
-assert.throws(()=>requireProvider('image',e),/尚未接入/);
-assert.equal(configuration(parse(text)).image.pending,true);assert.equal(configuration(parse(text)).image.configured,false);
-assert(!text.includes('not-accepted'));
+for(const p of providers.image){
+ e=save({image_provider:p.id,image_model:p.models[0],image_key:'fake-image-'+p.id,...(p.auth==='pair'?{image_access_id:'fake-access-'+p.id}:{})});
+ assert(!requireProvider('image',e)?.pending);assert(configuration(parse(text)).image.configured);assert.equal(e.IMAGE_API_BASE,p.base);
+ assert(!JSON.stringify(configuration(parse(text))).includes('fake-image-'));assert(!JSON.stringify(configuration(parse(text))).includes('fake-access-'));
+}
 e=save({tripo_provider:'rodin'});assert.throws(()=>requireProvider('tripo',e),/尚未接入/);assert.equal(e.TRIPO_API_KEY,'');
 e=save({tripo_provider:'tripo'});assert.equal(e.TRIPO_API_KEY,'tripo-private-key');
-console.log('PASS directory-only integrations cannot collect or send credentials as another provider');
+console.log('PASS all image providers are configurable while directory-only 3D integrations stay guarded');
 for(const [kind,list]of Object.entries(providers))for(const p of list){assert.equal(new URL(p.keys).protocol,'https:');assert.equal(new URL(p.docs).protocol,'https:');if(!p.pending){assert(p.base);assert(p.models.length);}assert.equal(getProvider(kind,p.id),p);}
 assert.deepEqual(providers.image.map(p=>p.id),['openai','gemini','qwen','hunyuan','jimeng','kling']);
 assert.deepEqual(providers.tripo.map(p=>p.id),['hunyuan','tripo','rodin','meshy']);
@@ -66,11 +67,11 @@ for(const model of ['qwen-plus','deepseek-reasoner','glm-5.3']){
 console.log('PASS unified vision configuration ignores stale overrides, preserves credentials and rejects removed presets');
 
 const {savedKey}=require('../scripts/studio/provider-config.cjs');
-const credentials={CHAT_API_BASE:'https://api.deepseek.com',CHAT_MODEL:'deepseek-flash',CHAT_API_KEY:'fake-reveal-key',KIRI_API_KEY:'fake-kiri-key'};
+const credentials={CHAT_API_BASE:'https://api.deepseek.com',CHAT_MODEL:'deepseek-flash',CHAT_API_KEY:'fake-reveal-key'};
 assert.equal(savedKey(credentials,{kind:'chat',provider:'deepseek',base:'https://api.deepseek.com'}).key,'fake-reveal-key');
 assert.equal(savedKey(credentials,{kind:'chat',provider:'kimi',base:'https://api.moonshot.cn/v1'}).key,'');
 assert.equal(savedKey(credentials,{kind:'chat',provider:'deepseek',base:'https://changed.test'}).key,'');
-assert.equal(savedKey(credentials,{kind:'kiri'}).key,'fake-kiri-key');assert.throws(()=>savedKey(credentials,{kind:'bad'}));
+assert.throws(()=>savedKey(credentials,{kind:'bad'}));
 assert(!JSON.stringify(configuration(credentials)).includes('fake-reveal-key'));assert(configuration(credentials).chat.has_key);
 console.log('PASS explicit saved-key access is isolated by provider and base; public config stays secret-free');
 
@@ -80,3 +81,21 @@ assert.equal(visionModelIssue('glm-5.3-flash'),'');
 const retained=resolveEnv({CHAT_PROVIDER:'openai',STUDIO_CHAT_OPENAI_MODEL:'gpt-4.1-mini',STUDIO_CHAT_OPENAI_KEY:'test-retain'});
 assert.equal(retained.CHAT_MODEL,'gpt-4.1-mini');assert.equal(retained.CHAT_API_KEY,'test-retain');
 console.log('PASS refreshed presets preserve explicitly saved models and GLM visual models are allowed');
+
+let pairText=updateConfig('',{},{image_provider:'hunyuan',image_key:'fake-hy-secret'});
+assert(!configuration(parse(pairText)).image.configured);
+pairText=updateConfig(pairText,parse(pairText),{image_provider:'hunyuan',image_access_id:'fake-hy-access'});
+assert(configuration(parse(pairText)).image.configured);
+assert.equal(savedKey(parse(pairText),{kind:'image',provider:'hunyuan',base:'https://hunyuan.tencentcloudapi.com',field:'access_id'}).key,'fake-hy-access');
+assert.equal(savedKey(parse(pairText),{kind:'image',provider:'kling',base:'https://api-singapore.klingai.com/v1',field:'access_id'}).key,'');
+pairText=updateConfig(pairText,parse(pairText),{image_provider:'kling',image_key:'fake-current-key',image_auth_mode:'key'});
+assert(configuration(parse(pairText)).image.configured);
+assert.throws(()=>updateConfig(pairText,parse(pairText),{image_provider:'kling',image_auth_mode:'pair',image_access_id:'fake-legacy-id'}),/重新填写/);
+pairText=updateConfig(pairText,parse(pairText),{image_provider:'kling',image_auth_mode:'pair',image_access_id:'fake-legacy-id',image_key:'fake-legacy-secret'});
+assert(configuration(parse(pairText)).image.configured);assert.equal(resolveEnv(parse(pairText)).IMAGE_AUTH_MODE,'pair');
+assert(!JSON.stringify(configuration(parse(pairText))).includes('fake-legacy-'));
+pairText=updateConfig(pairText,parse(pairText),{image_provider:'qwen',image_base:'https://workspace.ap-southeast-1.maas.aliyuncs.com/api/v1',image_key:'fake-workspace-key'});
+assert.equal(resolveEnv(parse(pairText)).IMAGE_API_BASE,'https://workspace.ap-southeast-1.maas.aliyuncs.com/api/v1');
+pairText=updateConfig(pairText,parse(pairText),{image_provider:'qwen',image_base:'https://another.ap-southeast-1.maas.aliyuncs.com/api/v1'});
+assert.equal(resolveEnv(parse(pairText)).IMAGE_API_KEY,'');
+console.log('PASS pair credentials, modern Kling keys, explicit auth-mode changes and workspace hosts stay isolated');

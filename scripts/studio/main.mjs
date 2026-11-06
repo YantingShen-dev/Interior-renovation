@@ -1,8 +1,11 @@
+import {paintQualityButton} from './display-quality.mjs';
+import {coverImage} from './asset-cover.mjs';
 import {materialBall} from './finish-library.mjs';
 import * as THREE from 'three';
 import {Viewport} from './viewport.mjs';
 import {icon,hydrateIcons} from './icons.mjs';
 import model from './state.cjs';
+import sceneData from './data-copy.cjs';
 import {setupWorkflow} from './workflow.mjs';
 import {setupHub,assetKind,colorCSS} from './hub.mjs';
 import plan from '../plan_geometry.js';
@@ -10,26 +13,31 @@ const {StudioState,G,F,copy,fromTransform,normalized,loadStoredDraft}=model;
 const $=id=>document.getElementById(id),initial=JSON.parse($('initial-scene').textContent),store=new StudioState(initial);
 const draftKey='space-studio-three-v2:'+initial.provenance.source_video_sha256+':'+(initial.layout_settings?.catalog_revision||'generic');
 let viewport=null,workflow=null,hub=null,catalogKind='soft',category='all',activePanel='library',toastTimer=null,pendingReference=null,proportionsBaseline=null,lastAnalysis=null;
+let refreshedScene=null;
 hydrateIcons();
 function toast(message,error=false){$('toast').textContent=message;$('toast').className='toast'+(error?' error':'');$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,3300);}
 function safe(fn){return (...args)=>{try{return fn(...args);}catch(error){toast(error.message,true);}};}
 function saveDraft(){if(hub){hub.persist();return;}try{localStorage.setItem(draftKey,JSON.stringify(store.scene));const time=new Intl.DateTimeFormat('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Asia/Singapore'}).format(new Date());$('save-status').innerHTML='<i></i>已保存 '+time;}catch(error){$('save-status').textContent='请导出方案备份';}}
 function download(bytes,name,type){const url=URL.createObjectURL(new Blob([bytes],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function saveJSON(){download(JSON.stringify(store.scene,null,2),'space-studio.scene.json','application/json');toast('完整房间、家具与商品参考图已导出');}
-function changed(){saveDraft();viewport?.rebuild();$('snap-hint').hidden=true;refresh();}
+function changed(){if(refreshedScene&&sceneData.equal(refreshedScene,store.scene))return;saveDraft();viewport?.rebuild();$('snap-hint').hidden=true;refresh();}
 function cm(v){return Math.round(v*10000)/100;}
+function syncFocal(focal){for(const id of ['walk-focal','walk-focal-value','camera-focal']){const input=$(id);if(input&&document.activeElement!==input)input.value=focal.toFixed(1);}}
 function labelAsset(asset){if(asset.id==='ikea_micke_80354281')return 'MICKE 米克 · 小书桌';if(asset.id==='ikea_ps2026_chair_20617959')return 'PS 2026 · 彩色折叠椅';if(asset.id==='ikea_rashult_70486668')return 'RÅSHULT 拉舍 · 手推车';return asset.label;}
 function assetIcon(asset){return ['desk','micke','coffee'].includes(asset.style||asset.id)?'desk':['cabinet','shelf','trolley'].includes(asset.style||asset.id)?'cabinet':asset.mount==='ceiling'?'light':asset.style==='box'?'cube':'armchair';}
-function addAsset(id,point=null){const asset=F.asset(store.scene,id);if((asset?.deleted_at||asset?.unavailable))throw new Error('该资产已删除');if(asset?.asset_type==='finish'){hub?.applyFinish(asset);return;}store.add(id,point);changed();viewport?.setTool('move');toast('已放入家具 · 拖动手柄，或直接拖动对象');}
+function addAsset(id,point=null){const asset=F.asset(store.scene,id);if((asset?.deleted_at||asset?.unavailable))throw new Error('该资产已删除');if(asset?.asset_type==='finish'){hub?.applyFinish(asset);return;}viewport?.setRenderPreview(false);store.add(id,point);changed();viewport?.setTool('move');toast('已放入家具 · 拖动手柄，或直接拖动对象');}
+let catalogKey=null,checksKey=null;
 function renderCatalog(){
+ const nextKey={query:$('search').value,category,catalogKind,assets:store.scene.assets.map(a=>({id:a.id,label:a.label,brand:a.brand,style:a.style,category:a.category,asset_type:a.asset_type,dimensions:a.dimensions,price_cny:a.price_cny,price_kind:a.price_kind,price_checked_at:a.price_checked_at,deleted_at:a.deleted_at,unavailable:a.unavailable,color:a.color,pattern:a.pattern,image:coverImage(a)}))};
+ if(sceneData.equal(nextKey,catalogKey))return;catalogKey=copy(nextKey);
  if(hub){document.querySelector('.catalog-tabs').hidden=catalogKind==='hard';$('catalog-heading').textContent=catalogKind==='hard'?'墙地材料与构件':'家具与物件';}
- const query=$('search').value.trim().toLowerCase();const assets=[...store.scene.assets,...F.presets].filter(asset=>{
+ const query=$('search').value.trim().toLowerCase();const assets=store.scene.assets.filter(asset=>{
   if(asset.deleted_at||asset.unavailable)return false;const style=asset.style||asset.id,match=category==='all'||category==='ikea'&&asset.brand==='IKEA'||category==='desk'&&['desk','micke','chair','ps2026_chair','coffee','sofa'].includes(style)||category==='storage'&&['cabinet','trolley','shelf','bookcase','kallax'].includes(style)||category==='light'&&['light','floor_lamp','pendant','track_light','wall_light'].includes(style);return assetKind(asset)===catalogKind&&match&&(!query||(asset.label+' '+asset.id+' '+(asset.brand||'')).toLowerCase().includes(query));
  });
  $('catalog').replaceChildren();$('catalog-count').textContent=assets.length+' 件';
  for(const asset of assets){
   const card=document.createElement('article');card.className='product-card';card.draggable=true;card.tabIndex=0;card.setAttribute('aria-label',asset.label+'，拖入场景或点击添加');card.dataset.asset=asset.id;
-  const art=document.createElement('div');art.className='product-art';if(asset.asset_type==='finish'){card.classList.add('finish-product');art.append(materialBall(asset));}else if(asset.reference_image){const image=document.createElement('img');image.src=asset.reference_image;image.alt=asset.label;image.draggable=false;art.append(image);}else art.innerHTML=icon(assetIcon(asset));
+  const art=document.createElement('div');art.className='product-art';if(asset.asset_type==='finish'){card.classList.add('finish-product');art.append(materialBall(asset));}else if(coverImage(asset)){const image=document.createElement('img');image.src=coverImage(asset);image.alt=asset.label;image.draggable=false;art.append(image);}else art.innerHTML=icon(assetIcon(asset));
   const brand=document.createElement('div');brand.className='product-brand';brand.textContent=asset.brand||'BASIC COLLECTION';const name=document.createElement('div');name.className='product-name';name.textContent=labelAsset(asset);name.title=asset.label;
   const size=document.createElement('div');size.className='product-size';size.textContent=asset.asset_type==='finish'?('选中对象后预览'):asset.dimensions.map(v=>Math.round(v*100)).join(' × ')+' cm';const add=document.createElement('button');add.className='product-add';add.innerHTML=icon('plus');add.title=(asset.asset_type==='finish'?'预览 ':'放入 ')+asset.label;add.setAttribute('aria-label',add.title);add.onclick=safe(event=>{event.stopPropagation();addAsset(asset.id);});
   const price=document.createElement('div');price.className='product-price';price.textContent=Number.isFinite(asset.price_cny)?'¥ '+asset.price_cny.toFixed(2):'价格待填写';if(asset.asset_type==='finish')price.textContent+=' /㎡';price.title=asset.price_kind==='example_estimate'?'示例估价，可在资产库编辑':asset.price_checked_at?'宜家官网常规价 · '+asset.price_checked_at.slice(0,10):'自定义或未提供价格';
@@ -40,7 +48,7 @@ function renderCatalog(){
 function renderObjects(){
  $('object-count').textContent=store.scene.furniture.length+' 件家具 · 随方案一起保存';$('object-list').replaceChildren();
  for(const f of store.scene.furniture){const asset=F.asset(store.scene,f.asset_id),row=document.createElement('button');row.className='object-row'+(f.id===store.selected?' active':'');
-  if(asset.reference_image){const img=document.createElement('img');img.src=asset.reference_image;img.alt='';row.append(img);}else row.innerHTML=icon(assetIcon(asset));
+  if(coverImage(asset)){const img=document.createElement('img');img.src=coverImage(asset);img.alt='';row.append(img);}else row.innerHTML=icon(assetIcon(asset));
   const info=document.createElement('div'),title=document.createElement('strong'),size=document.createElement('small');title.textContent=f.label;size.textContent=f.dimensions.map(v=>Math.round(v*100)).join(' × ')+' cm';info.append(title,size);row.append(info);row.onclick=()=>{viewport?.select(f.id);viewport?.focus();};$('object-list').append(row);
  }
  for(const item of [...store.scene.walls.map((w,i)=>({...w,label:w.label==='墙'?'墙 '+(i+1):w.label})),...store.scene.openings,{id:'floor',label:'地面'},{id:'ceiling',label:'顶面'}]){const row=document.createElement('button');row.className='object-row'+(item.id===store.selected?' active':'');row.textContent=(item.label||item.id)+' · 表面材质';row.onclick=()=>viewport?.select(item.id);$('object-list').append(row);}
@@ -50,7 +58,7 @@ function renderInspector(scene=store.scene){
  hub?.renderMaterialInspector();
  const f=scene.furniture.find(f=>f.id===store.selected);$('inspector-empty').hidden=!!f||!!store.selected;$('inspector-object').hidden=!f;document.querySelector('.workbench').classList.toggle('has-selection',!!f);
  $('empty-room-size').textContent=[scene.room.length,scene.room.width,scene.room.height].map(v=>v.toFixed(2)).join(' × ')+' m';$('object-context').hidden=!f||viewport?.mode==='human';if(!f)return;
- const asset=F.asset(scene,f.asset_id),pose=F.pose(scene,f);$('selected-image').hidden=!asset.reference_image;$('selected-placeholder').hidden=!!asset.reference_image;if(asset.reference_image)$('selected-image').src=asset.reference_image;
+ const asset=F.asset(scene,f.asset_id),pose=F.pose(scene,f);$('selected-image').hidden=!coverImage(asset);$('selected-placeholder').hidden=!!coverImage(asset);if(coverImage(asset))$('selected-image').src=coverImage(asset);
  $('selected-brand').textContent=(asset.brand||'BASIC COLLECTION')+(Number.isFinite(asset.price_cny)?' · ¥'+asset.price_cny.toFixed(2):'');$('object-name').value=f.label;$('selected-source-type').textContent=asset.model_glb?'实物三维模型 · 尺寸由用户确认':f.dimension_source==='manufacturer_official_dimensions'?'官网尺寸 · 简化三维模型':f.dimension_source==='user_input'?'自定义尺寸 · 可继续调整':'部分尺寸待确认 · 简化模型';
  for(const [index,axis]of ['x','y','z'].entries()){$('dim-'+axis).value=cm(f.dimensions[index]);$('pos-'+axis).value=cm(pose.position[index]);}
  $('angle').value=Math.round(pose.rotation_deg*10)/10;$('mount').value=f.mount;$('wall-fields').hidden=f.mount!=='wall';$('wall').replaceChildren();for(const wall of scene.walls){const option=document.createElement('option');option.value=wall.id;option.textContent=wall.label;$('wall').append(option);}$('wall').value=f.wall_id||scene.walls[0].id;$('wall-u').value=cm(f.u||G.length(scene.walls[0])/2);
@@ -59,13 +67,14 @@ function renderInspector(scene=store.scene){
  $('selected-checks').replaceChildren();for(const issue of lastAnalysis?.issues.filter(i=>i.ids.includes(f.id))||[]){const node=document.createElement('p');node.textContent=issue.message;$('selected-checks').append(node);}
 }
 function renderChecks(){
+ const key=[store.scene.room,store.scene.walls,store.scene.openings,store.scene.furniture,store.scene.layout_settings];if(sceneData.equal(key,checksKey))return;checksKey=copy(key);
  lastAnalysis=store.analyze();const n=lastAnalysis.issues.length;$('issue-count').hidden=!n;$('issue-count').textContent=n;$('check-summary').className='check-summary'+(n?' warn':'');$('check-summary').replaceChildren();const number=document.createElement('strong');number.textContent=n?n+' 项待调整':'空间关系清晰';const note=document.createElement('span');note.textContent=lastAnalysis.route.connected?'当前目标宽度下，门间通路连通':'当前门间通路需要调整或核对';$('check-summary').append(number,note);$('check-list').replaceChildren();
  const issues=n?lastAnalysis.issues:[{type:'ok',message:'未发现家具重叠、门前遮挡或门间通路断开。'}];for(const issue of issues){const node=document.createElement('div');node.className='check-item'+(issue.type==='ok'?' ok':'');node.innerHTML=icon(issue.type==='ok'?'check-circle':'warning');const text=document.createElement('span');text.textContent=issue.message;node.append(text);$('check-list').append(node);}
  $('clearance').value=Math.round((store.scene.layout_settings.clearance_m||.8)*100);
 }
 function refresh(){
  workflow?.refresh();hub?.refresh();
- renderCatalog();renderObjects();renderChecks();renderInspector();$('room-metrics').textContent=(store.scene.room.outline?Math.abs(plan.area(store.scene.room.outline)):store.scene.room.length*store.scene.room.width).toFixed(2)+'㎡ · '+store.scene.room.length.toFixed(2)+' × '+store.scene.room.width.toFixed(2)+' m';$('undo').disabled=!store.history.length;$('redo').disabled=!store.future.length;$('object-context').hidden=!store.current()||viewport?.mode==='human';
+ renderCatalog();renderObjects();renderChecks();renderInspector();$('room-metrics').textContent=(store.scene.room.outline?Math.abs(plan.area(store.scene.room.outline)):store.scene.room.length*store.scene.room.width).toFixed(2)+'㎡ · '+store.scene.room.length.toFixed(2)+' × '+store.scene.room.width.toFixed(2)+' m';$('undo').disabled=!store.history.length;$('redo').disabled=!store.future.length;$('object-context').hidden=!store.current()||viewport?.mode==='human';refreshedScene=copy(store.scene);
 }
 function panel(name){activePanel=name;for(const button of document.querySelectorAll('[data-panel]'))button.classList.toggle('active',button.dataset.panel===name);for(const key of ['library','objects','checks'])$('panel-'+key).hidden=key!==name;document.querySelector('.workbench').classList.add('panel-open');}
 function setTool(tool){viewport?.setTool(tool);if(!viewport)toolUI(tool);}
@@ -121,6 +130,9 @@ function bind(){
  $('walk-height').oninput=()=>previewHeight($('walk-height').valueAsNumber);$('walk-height').onchange=saveHeight;
  $('walk-height-value').oninput=()=>{const n=$('walk-height-value').valueAsNumber;if(Number.isFinite(n)&&n>=.3&&n<=Number($('walk-height-value').max)){viewport?.setEyeHeight(n);$('walk-height').value=n;}};
  $('walk-height-value').onchange=$('walk-height-value').onblur=()=>{previewHeight($('walk-height-value').valueAsNumber);saveHeight();};
+ $('walk-focal').oninput=()=>viewport?.setFocalLength($('walk-focal').valueAsNumber);
+ $('walk-focal-value').oninput=()=>{const value=$('walk-focal-value').valueAsNumber;if(Number.isFinite(value)&&value>=10&&value<=200)viewport?.setFocalLength(value);};
+ $('walk-focal-value').onchange=$('walk-focal-value').onblur=()=>{if(!viewport)return;const focal=viewport.setFocalLength($('walk-focal-value').valueAsNumber);$('walk-focal-value').value=focal.toFixed(1);};
 
  for(const button of document.querySelectorAll('[data-axis]'))button.onclick=()=>viewport?.setAxis(button.dataset.axis);
  $('export-json').onclick=saveJSON;
@@ -132,11 +144,11 @@ function bind(){
  $('rotate-quarter').onclick=safe(()=>{const f=store.current();if(!f)return;if(f.mount==='wall'&&!f.free_position)throw new Error('挂墙家具沿墙定向');store.update(f.id,{rotation_deg:(f.rotation_deg+90)%360});changed();});
  $('reset-color').onclick=()=>{const f=store.current();if(!f)return;const next=copy(store.scene);delete next.furniture.find(o=>o.id===f.id).material_override;store.commit(next);changed();};
  $('snap').onclick=()=>{if(!viewport)return;viewport.snap=!viewport.snap;$('snap').classList.toggle('active',viewport.snap);viewport.updateSelection();toast(viewport.snap?'已启用 5cm 网格、贴墙与边缘吸附':'吸附已关闭');};
- $('cutaway').onclick=()=>{if(!viewport)return;viewport.cutaway=!viewport.cutaway;$('cutaway').classList.toggle('active',viewport.cutaway);};$('grid').onclick=()=>{if(!viewport)return;viewport.grid.visible=!viewport.grid.visible;$('grid').classList.toggle('active',viewport.grid.visible);};$('door-zones').onclick=()=>{if(!viewport)return;viewport.showZones=!viewport.showZones;viewport.zones.visible=viewport.showZones;$('door-zones').classList.toggle('active',viewport.showZones);};
+ $('display-quality').onclick=()=>{if(!viewport)return;viewport.setQuality(viewport.quality==='fast'?'high':'fast');paintQualityButton($('display-quality'),viewport.quality);toast('显示质量：'+(viewport.quality==='fast'?'流畅 · 尺寸简模':'精细 · 完整模型'));};$('cutaway').onclick=()=>{if(!viewport)return;viewport.cutaway=!viewport.cutaway;$('cutaway').classList.toggle('active',viewport.cutaway);};$('grid').onclick=()=>{if(!viewport)return;viewport.grid.visible=!viewport.grid.visible;$('grid').classList.toggle('active',viewport.grid.visible);};$('door-zones').onclick=()=>{if(!viewport)return;viewport.showZones=!viewport.showZones;viewport.zones.visible=viewport.showZones;$('door-zones').classList.toggle('active',viewport.showZones);};
  $('precision').onkeydown=safe(event=>{if(event.key==='Enter'){event.preventDefault();applyPrecision();$('viewport').focus();}});
  $('clearance').onchange=safe(()=>{const value=Number($('clearance').value)/100;if(!Number.isFinite(value)||value<.3||value>2)throw new Error('通行宽度请输入 30–200 cm');const next=copy(store.scene);next.layout_settings.clearance_m=value;store.commit(next);changed();});
  $('export-menu').onclick=()=>{$('export-options').hidden=!$('export-options').hidden;};document.addEventListener('pointerdown',event=>{if(!event.target.closest('.menu-anchor'))$('export-options').hidden=true;});
- $('export-glb').onclick=async()=>{try{download(viewport?await viewport.exportGLB():G.exportGLB(store.scene),'space-studio.glb','model/gltf-binary');$('export-options').hidden=true;toast('GLB 已导出，保留独立墙体、门窗与家具节点');}catch(e){toast(e.message,true);}};$('export-image').onclick=safe(()=>{if(!viewport)throw new Error('三维视图尚未启动');const a=document.createElement('a');a.href=viewport.snapshot();a.download='space-studio-view.png';a.click();$('export-options').hidden=true;});
+ $('export-glb').onclick=async()=>{try{download(viewport?await viewport.exportGLB():G.exportGLB(store.scene),'space-studio.glb','model/gltf-binary');$('export-options').hidden=true;toast('GLB 已导出，保留独立墙体、门窗与家具节点');}catch(e){toast(e.message,true);}};$('export-image').onclick=async()=>{try{if(!viewport)throw new Error('三维视图尚未启动');const a=document.createElement('a');a.href=await viewport.imageSnapshot();a.download='space-studio-view.png';a.click();$('export-options').hidden=true;}catch(e){toast(e.message,true);}};
  $('reset-project').onclick=()=>{store.commit(copy(store.initial));changed();$('export-options').hidden=true;toast('已恢复初始测试方案，可以撤销');};
  $('import').onclick=()=>$('import-file').click();$('import-file').onchange=async()=>{try{const file=$('import-file').files[0];if(!file)return;const next=JSON.parse(await file.text());if(next.schema_version!=='room-pilot-1')throw new Error('请选择当前房间方案 JSON');if(hub){await hub.importProject(normalized(next));toast('已作为独立空间导入');return;}store.commit(normalized(next));changed();if(viewport){viewport.cameras=makeReplacementCameras();viewport.setView('3d');}toast('房间、家具和商品参考图已恢复');}catch(error){toast(error.message,true);}finally{$('import-file').value='';}};
  $('help').onclick=()=>$('help-dialog').showModal();for(const button of document.querySelectorAll('[data-close]'))button.onclick=()=>$(button.dataset.close).close();for(const id of ['room-dialog','custom-dialog','help-dialog'])$(id).addEventListener('click',event=>{if(event.target===$(id))$(id).close();});
@@ -151,7 +163,6 @@ function makeReplacementCameras(){return makeCameras(store.scene.room,$('viewpor
 
 try{
  const restored=loadStoredDraft(localStorage,initial);if(restored){store.scene=restored.scene;
-  for(const fresh of initial.assets.filter(a=>a.brand==='IKEA')){const i=store.scene.assets.findIndex(a=>a.id===fresh.id);if(i<0)store.scene.assets.push(copy(fresh));else store.scene.assets[i]={...store.scene.assets[i],price_cny:fresh.price_cny,price_kind:fresh.price_kind,price_checked_at:fresh.price_checked_at};}
   $('save-status').innerHTML='<i></i>已恢复'+(restored.migrated?'原方案':'草稿');if(restored.migrated)saveDraft();}
 }catch(error){}
 bind();refresh();toolUI('select');
@@ -160,10 +171,12 @@ try{
  viewport=new Viewport($('viewport'),store,{
   ready:()=>{$('loading').hidden=true;},
   fatal:message=>{$('loading').hidden=true;$('renderer-error').hidden=false;$('renderer-error-text').textContent=message;window.__SPACE_STUDIO_ERROR__=message;},
+  renderMode:enabled=>{document.body.dataset.preview=String(enabled);const button=$('render-realtime');if(button)button.textContent=enabled?'关闭快速渲染':'开启快速渲染';},
   toast,addAsset,change:changed,select:()=>{renderObjects();renderInspector();if(store.selected)hub?.right('properties');},tool:toolUI,
   axis:axis=>{for(const button of document.querySelectorAll('[data-axis]'))button.classList.toggle('active',button.dataset.axis===axis);},
   eyeHeight:height=>{for(const id of ['walk-height','walk-height-value']){$(id).max=Math.max(.3,store.scene.room.height-.15);if(document.activeElement!==$(id))$(id).value=height.toFixed(2);}},
-  view:mode=>{document.body.dataset.view=mode;$('walk-height-controls').hidden=mode!=='human';if(mode==='human'){for(const id of ['walk-height','walk-height-value']){$(id).max=Math.max(.3,store.scene.room.height-.15);$(id).value=viewport.camera.position.z.toFixed(2);}}for(const button of document.querySelectorAll('[data-view]'))button.classList.toggle('active',button.dataset.view===mode);$('walk-hint').hidden=mode!=='human';$('object-context').hidden=mode==='human'||!store.current();},
+  focal:syncFocal,
+  view:mode=>{document.body.dataset.view=mode;$('walk-height-controls').hidden=mode!=='human';$('walk-focal-controls').hidden=mode!=='human';if(viewport)syncFocal(viewport.cameras.perspective.getFocalLength());if(mode==='human'){for(const id of ['walk-height','walk-height-value']){$(id).max=Math.max(.3,store.scene.room.height-.15);$(id).value=viewport.camera.position.z.toFixed(2);}}for(const button of document.querySelectorAll('[data-view]'))button.classList.toggle('active',button.dataset.view===mode);$('walk-hint').hidden=mode!=='human';$('object-context').hidden=mode==='human'||!store.current();},
   preview:(scene,hints,errors)=>{renderInspector(scene);$('snap-hint').hidden=!hints.length&&!errors.length;$('snap-hint').textContent=errors[0]||hints.join(' · ');if(!hints.length&&!errors.length)$('snap-hint').hidden=true;},
   context:screen=>{const node=$('object-context');node.hidden=!screen.visible||!store.current()||viewport?.mode==='human';node.style.left=Math.max(65,Math.min($('viewport').clientWidth-120,screen.x-52))+'px';node.style.top=Math.max(75,screen.y-55)+'px';},
   labels:labels=>{const layer=$('world-labels');while(layer.children.length<labels.length)layer.append(document.createElement('span'));while(layer.children.length>labels.length)layer.lastChild.remove();labels.forEach((label,i)=>{const node=layer.children[i];node.className='world-label '+label.type;node.textContent=label.text;node.hidden=!label.visible;node.style.left=label.x+'px';node.style.top=label.y+'px';});}

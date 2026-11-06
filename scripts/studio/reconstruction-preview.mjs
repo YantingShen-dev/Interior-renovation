@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {Preview} from './preview.mjs';
 import {disposeGraph,visibleObject} from './scene.mjs';
 import plan from '../plan_geometry.js';
+import dataCopy from './data-copy.cjs';
 
 // The editing viewport keeps the draft's world origin; saved scenes normalize it.
 export function draftOrigin(walls){return walls.length?[0,1].map(k=>Math.min(...walls.flatMap(w=>[w.start[k],w.end[k]]))):[0,0];}
@@ -26,8 +27,8 @@ export class ReconstructionPreview extends Preview {
  activate(){this.editor.setSurface(this.renderer.domElement,p=>this.project(p));this.sync(this.editor.state());}
  project(p){const v=new THREE.Vector3(...p,0).project(this.camera),r=this.renderer.domElement.getBoundingClientRect();return {x:r.left+(v.x+1)*r.width/2,y:r.top+(1-v.y)*r.height/2};}
  sync(state){
-  if(!this.editing)return;this.state=state;const key=JSON.stringify([state.walls,state.openings,state.height,...(state.finishes?[state.finishes]:[]),...(state.furniture||state.assets?[state.furniture,state.assets]:[])]);
-  if(key!==this.key){this.key=key;if(state.walls.length){const data=plan.createWallScene(state.walls,state.height,state.openings,state.assets||[],{preserveOrigin:true});data.furniture=structuredClone(state.furniture||[]);data.finishes=structuredClone(state.finishes||{});this.setScene(data);this.graph.root.position.set(0,0,0);this.graph.root.updateMatrixWorld(true);}else this.clear();}
+  if(!this.editing)return;this.state=state;const key=[state.walls,state.openings,state.height,state.finishes,state.furniture,state.assets];
+  if(!dataCopy.equal(key,this.key)){this.key=dataCopy.copy(key);if(state.walls.length){const data=plan.createWallScene(state.walls,state.height,state.openings,state.assets||[],{preserveOrigin:true});data.furniture=dataCopy.copy(state.furniture||[]);data.finishes=dataCopy.copy(state.finishes||{});this.setScene(data);this.graph.root.position.set(0,0,0);this.graph.root.updateMatrixWorld(true);}else this.clear();}
   if(this.graph)for(const [id,group]of this.graph.entities){const selected=state.selected.includes(id)||id===state.opening;group.traverse(o=>{if(o.isMesh){o.material.userData.baseColor??=o.material.color.clone();o.material.color.copy(selected?new THREE.Color('#348ee8'):o.material.userData.baseColor);o.material.emissive?.set(selected?'#123d70':'#000000');}});}
   this.ghost.clear();
   if(this.ghostParts){disposeGraph(this.ghostParts);this.ghostParts=null;}

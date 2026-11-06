@@ -14,14 +14,14 @@ const providers={
  ],
  image:[
   {id:'openai',name:'GPT Image · OpenAI',base:'https://api.openai.com/v1',models:['gpt-image-2.5-sunburst','gpt-image-2.5-flare'],keys:'https://platform.openai.com/api-keys',docs:'https://developers.openai.com/api/reference/resources/images/methods/edit'},
-  {id:'gemini',name:'Nano Banana · Gemini',models:['gemini-nano-banana-2.1','gemini-3-pro-image'],keys:'https://aistudio.google.com/apikey',docs:'https://ai.google.dev/gemini-api/docs/image-generation',pending:true},
-  {id:'qwen',name:'Qwen · 通义图像编辑',models:['qwen-image-2.0-pro','qwen-image-2.0'],keys:'https://bailian.console.aliyun.com/?tab=model#/api-key',docs:'https://help.aliyun.com/zh/model-studio/qwen-image-edit-api',pending:true},
-  {id:'hunyuan',name:'混元 · 腾讯',models:[],keys:'https://console.cloud.tencent.com/cam/capi',docs:'https://cloud.tencent.com/document/api/1668/113697',pending:true,hint:'官方接口使用 SecretId / SecretKey，需在腾讯云开通相应服务。'},
-  {id:'jimeng',name:'即梦 · 火山引擎',models:['doubao-seedream-5-0-pro-260628','doubao-seedream-5-0-flash-260915'],keys:'https://console.volcengine.com/ai/ability',docs:'https://docs.volcengine.com/docs/ark/image-generation-tutorial?lang=zh',pending:true,hint:'Seedream 5.0 的模型 ID 对应火山方舟接口；即梦视觉服务的请求参数不同，平台调用仍待接入。'},
-  {id:'kling',name:'可灵 · Kling',models:[],keys:'https://kling.ai/dev',docs:'https://app.klingai.com/global/dev/document-api/quickStart/productIntroduction/overview',pending:true,hint:'在开发者平台创建 Access Key / Secret Key。'}
+  {id:'gemini',name:'Nano Banana · Gemini',base:'https://generativelanguage.googleapis.com/v1beta',models:['gemini-nano-banana-2.1','gemini-3-pro-image','gemini-2.5-flash-image'],keys:'https://aistudio.google.com/apikey',docs:'https://ai.google.dev/gemini-api/docs/generate-content/image-generation?hl=en',maxImages:5,hint:'使用 Google AI Studio API Key。支持空间底图及多张参考图，通过 Gemini 原生接口生成图片。'},
+  {id:'qwen',name:'Qwen · 通义图像编辑',base:'https://dashscope.aliyuncs.com/api/v1',allowCustomBase:true,models:['qwen-image-2.0-pro','qwen-image-2.0','qwen-image-edit-plus'],keys:'https://bailian.console.aliyun.com/?tab=model#/api-key',docs:'https://help.aliyun.com/zh/model-studio/qwen-image-edit-api',maxImages:3,hint:'默认北京地域，须使用对应地域的百炼 Key；新加坡可填 https://dashscope-intl.aliyuncs.com/api/v1，也可填写工作空间专属域名到 /api/v1。含空间底图最多 3 张图片。'},
+  {id:'hunyuan',name:'混元 · 腾讯',base:'https://hunyuan.tencentcloudapi.com',models:['hunyuan-image'],auth:'pair',accessLabel:'SecretId',secretLabel:'SecretKey',keys:'https://console.cloud.tencent.com/cam/capi',docs:'https://cloud.tencent.com/document/api/1729/105969',maxImages:1,maxPrompt:1024,formats:['image/jpeg','image/png'],hint:'使用腾讯云 SecretId 和 SecretKey，调用混元生图内容参考图接口并查询任务结果。仅支持 1 张空间底图，描述含文字附件最多 1024 字；hunyuan-image 表示此固定接口，不是可切换的模型版本。'},
+  {id:'jimeng',name:'即梦 / Seedream · 火山方舟',base:'https://ark.cn-beijing.volces.com/api/v3',models:['doubao-seedream-5-0-pro-260628','doubao-seedream-5-0-flash-260915','doubao-seedream-4-5-251128'],keys:'https://ark.volcengine.com/region:cn-beijing/apikey',docs:'https://docs.volcengine.com/docs/ark/image-generation-api?lang=zh',maxImages:5,hint:'使用火山方舟 API Key，支持 Seedream 单图和多图编辑。即梦视觉服务的 AK/SK 与方舟密钥不同，不能混用。'},
+  {id:'kling',name:'可灵 · Kling',base:'https://api-singapore.klingai.com/v1',allowCustomBase:true,models:['kling-image-o1','kling-v3-omni'],auth:'key-or-pair',accessLabel:'Access Key',secretLabel:'Secret Key',keys:'https://kling.ai/dev',docs:'https://kling.ai/document-api/api/image/o1/image-generation',maxImages:5,maxPrompt:2500,formats:['image/jpeg','image/png'],hint:'新账号填 API Key 即可；旧版账号可切换为 Access Key + Secret Key，本机自动签发 JWT。支持 Omni Image 生成及任务查询。默认新加坡；按账户地域可改为 https://api-beijing.klingai.com/v1。参考图至少 300px，宽高比为 1:2.5 至 2.5:1。'}
  ],
  tripo:[
-  {id:'hunyuan',name:'混元 3D · 腾讯 TokenHub',base:'https://tokenhub.tencentmaas.com/v1',models:['hy-3d-express'],keys:'https://console.cloud.tencent.com/tokenhub/apikey',docs:'https://cloud.tencent.com/document/product/1823/137175',hint:'填写 TokenHub API Key（不是腾讯云 SecretId / SecretKey）。需开通混元 3D 服务；图片最大 6MB。'},
+  {id:'hunyuan',name:'混元 3D · 腾讯 TokenHub',base:'https://tokenhub.tencentmaas.com/v1',models:['hy-3d-express','hy-3d-3.1','hy-3d-3.0'],keys:'https://console.cloud.tencent.com/tokenhub/apikey',docs:'https://cloud.tencent.com/document/product/1823/137175',hint:'填写 TokenHub API Key（不是腾讯云 SecretId / SecretKey）。需开通混元 3D 服务。极速版仅单图；3.1 / 3.0 专业版支持多视图，在录入家具时可选择。'},
   {id:'tripo',name:'Tripo',base:'https://openapi.tripo3d.ai/v3',models:['v3.1-20260211','v3.0-20250812'],keys:'https://platform.tripo3d.ai/api-keys',docs:'https://docs.tripo3d.ai/'},
   {id:'rodin',name:'影眸 · Hyper3D / Rodin',models:['Gen-2.5'],keys:'https://hyper3d.ai/workspace/api-dashboard',docs:'https://docs.hyper3d.ai/en',pending:true},
   {id:'meshy',name:'Meshy',base:'https://api.meshy.ai/openapi/v1',models:['meshy-7.1','meshy-t2.5'],keys:'https://www.meshy.ai/developers/keys',docs:'https://docs.meshy.ai/en/api/image-to-3d'}
@@ -33,5 +33,5 @@ function getProvider(kind,id){return providers[kind]?.find(p=>p.id===id);}
 // Former text presets (or presets without verified vision support) must not stay active silently.
 const removedVisionPresets=new Set(['deepseek-chat','deepseek-reasoner','deepseek-v4-pro','qwen-plus','qwen-turbo','glm-5.3','MiniMax-M2','MiniMax-M2.5','MiniMax-M2.7']);
 function visionModelIssue(model){return removedVisionPresets.has(model)?'原模型未满足视觉预设要求，请在「配置服务」重新选择支持图片与工具调用的模型。':'';}
-const checkedAt='2026-11-02';
+const checkedAt='2026-11-05';
 module.exports={providers,defaults,matchProvider,getProvider,visionModelIssue,checkedAt};

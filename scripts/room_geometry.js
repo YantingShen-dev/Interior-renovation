@@ -41,8 +41,8 @@
       if(w.skirt){const h=w.skirt.height||.09;const boxes=[];for(let i=0;i<us.length-1;i++){const u=(us[i]+us[i+1])/2;if(openings.some(o=>o.bottom<h&&u>o.u-EPS&&u<o.u+o.width+EPS))continue;boxes.push({center:wallPoint(w,u,h/2,-.008),size:[us[i+1]-us[i],.016,h],yaw});}add(w.id+'_skirt',w.id,w.skirt.color||[.025,.03,.03,1],boxes,'skirt');}
       add(w.id+'_surface',w.id,w.material_override||s.finishes?.walls?.color||[.86,.84,.80,1],boxes,'wall');
     }
-    add('floor_surface','floor',s.finishes?.floor?.color||[.68,.61,.51,1],s.room.regions?.length?s.room.regions.flatMap(p=>P.floorGeometry(p,-.025)):s.room.outline?P.floorGeometry(s.room.outline,-.025):[{center:[s.room.length/2,s.room.width/2,-.025],size:[s.room.length,s.room.width,.05],yaw:0}],'floor');
-    add('ceiling_surface','ceiling',[.90,.92,.94,1],s.room.regions?.length?s.room.regions.flatMap(p=>P.floorGeometry(p,H+.025)):s.room.outline?P.floorGeometry(s.room.outline,H+.025):[{center:[s.room.length/2,s.room.width/2,H+.025],size:[s.room.length,s.room.width,.05],yaw:0}],'ceiling');
+    add('floor_surface','floor',s.finishes?.floor?.color||[.3,.32,.35,1],s.room.regions?.length?s.room.regions.flatMap(p=>P.floorGeometry(p,-.025)):s.room.outline?P.floorGeometry(s.room.outline,-.025):[{center:[(s.room.origin?.[0]||0)+s.room.length/2,(s.room.origin?.[1]||0)+s.room.width/2,-.025],size:[s.room.length,s.room.width,.05],yaw:0}],'floor');
+    add('ceiling_surface','ceiling',[.90,.92,.94,1],s.room.regions?.length?s.room.regions.flatMap(p=>P.floorGeometry(p,H+.025)):s.room.outline?P.floorGeometry(s.room.outline,H+.025):[{center:[(s.room.origin?.[0]||0)+s.room.length/2,(s.room.origin?.[1]||0)+s.room.width/2,H+.025],size:[s.room.length,s.room.width,.05],yaw:0}],'ceiling');
     for(const o of s.openings){
       const w=walls[o.wall_id],yaw=Math.atan2(w.end[1]-w.start[1],w.end[0]-w.start[0]),t=.035;
       const frame=[{center:wallPoint(w,o.u+t/2,o.bottom+o.height/2),size:[t,.045,o.height],yaw},

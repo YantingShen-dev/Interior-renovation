@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import service from '../scripts/studio/design-service.cjs';
+import {requestDesign} from '../scripts/studio/design-client.mjs';
+const env={CHAT_API_BASE:'https://dashscope.aliyuncs.com/compatible-mode/v1',CHAT_MODEL:'qwen3.8-max',CHAT_API_KEY:'not-a-real-key'},input={prompt:'保留物品重新布置',context:{room:{length:4,width:3,height:3}},constraints:{preserve_existing:true}};
+const body=service.requestBody(env,{},input);assert.equal(body.enable_thinking,false);assert.equal(body.stream,true);assert.equal(body.max_tokens,4096);assert(body.messages.at(-1).content.includes('preserve_existing'));
+assert.equal(service.requestBody({...env,CHAT_API_BASE:'https://custom.example/v1'}, {},input).enable_thinking,undefined);
+const answer={message:'沿墙调整书桌',operations:[{type:'update',id:'desk',position:[1,1,0]}]},events=[];let calls=0;
+const text='data: '+JSON.stringify({choices:[{delta:{reasoning_content:'private reasoning never shown'}}]})+'\n\n'+[JSON.stringify(answer).slice(0,7),JSON.stringify(answer).slice(7)].map(content=>'data: '+JSON.stringify({choices:[{delta:{content}}]})+'\n\n').join('')+'data: '+JSON.stringify({choices:[{delta:{},finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n';
+const bytes=new TextEncoder().encode(text),upstream=()=>new Response(new ReadableStream({start(controller){for(let i=0;i<bytes.length;i+=11)controller.enqueue(bytes.slice(i,i+11));controller.close();}}),{headers:{'Content-Type':'text/event-stream'}});
+assert.deepEqual(await service.generateDesign({env,provider:{},input,onProgress:p=>events.push(p),fetcher:async()=>{calls++;return upstream();}}),answer);assert.equal(calls,1);assert(events.some(e=>e.phase==='connected'));assert(!JSON.stringify(events).includes('private reasoning'));
+assert.throws(()=>service.parseAnswer(JSON.stringify({message:'remove',operations:[{type:'remove',id:'desk'}]}),'stop',input),/阻止/);assert.throws(()=>service.parseAnswer('{}','length',input),/未完成/);
+await assert.rejects(service.generateDesign({env,input,timeoutMs:100,idleMs:10,fetcher:(_,options)=>new Promise((resolve,reject)=>{const hold=setTimeout(()=>reject(Error('test should have aborted first')),200);options.signal.addEventListener('abort',()=>{clearTimeout(hold);reject(Error('aborted'));});})}),/30秒/);
+const records=[{type:'progress',phase:'generating',message:'正在生成家具调整',received_chars:42},{type:'result',value:answer}],stream=records.map(r=>JSON.stringify(r)+'\n').join(''),progress=[];
+const result=await requestDesign(input,{onProgress:p=>progress.push(p),fetcher:async()=>new Response(stream,{headers:{'Content-Type':'application/x-ndjson'}})});assert.deepEqual(result,answer);assert.equal(progress[0].received_chars,42);
+await assert.rejects(requestDesign(input,{fetcher:async()=>new Response(JSON.stringify({type:'error',error:'服务暂时不可用'})+'\n',{headers:{'Content-Type':'application/x-ndjson'}})}),/不可用/);
+await assert.rejects(requestDesign(input,{fetcher:async()=>new Response(JSON.stringify(records[0])+'\n',{headers:{'Content-Type':'application/x-ndjson'}})}),/中断/);
+assert.deepEqual(await requestDesign(input,{fetcher:async()=>new Response(JSON.stringify(answer),{headers:{'Content-Type':'application/json'}})}),answer);
+console.log('PASS bounded Qwen generation, real stream stages, UTF-8 fragments, no reasoning leakage, idle deadline, preservation, truncation, NDJSON completion/error and JSON compatibility');

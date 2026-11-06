@@ -1,0 +1,3 @@
+// Only the explicitly configured hosts bypass the proxy; never retry a paid POST.
+function configureNetwork(env=process.env,directHosts=env.STUDIO_DIRECT_HOSTS||''){const current=env.NO_PROXY??env.no_proxy??'',entries=current.split(',').map(s=>s.trim()).filter(Boolean),hosts=String(directHosts).split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);if(hosts.some(h=>!/^[-a-z0-9.]+$/.test(h)))throw Error('STUDIO_DIRECT_HOSTS 只接受以逗号分隔的主机名');for(const host of ['localhost','127.0.0.1','::1',...hosts])if(!entries.includes(host))entries.push(host);env.NO_PROXY=entries.join(',');env.no_proxy=env.NO_PROXY;return env;}
+module.exports={configureNetwork};

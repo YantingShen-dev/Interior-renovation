@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {spaceTemplate,designFromSpace,projectKind,designAlbums} from '../scripts/studio/projects.mjs';
+import {spaceTemplate,designFromSpace,duplicateDesign,projectKind,designAlbums} from '../scripts/studio/projects.mjs';
 import {providers,matchProvider} from '../scripts/studio/provider-presets.mjs';
 import plan from '../scripts/plan_geometry.js';
 const source=plan.createScene([[0,0],[5,0],[5,2],[3,2],[3,4],[0,4]],2.8);
@@ -11,6 +11,12 @@ const item={kind:'space',scene:template},assets=[{id:'chair',dimensions:[.5,.5,.
 design.room.outline[0][0]=1;design.assets[0].dimensions[0]=2;design.furniture.push({id:'new_item'});
 assert.equal(template.room.outline[0][0],0);assert.equal(assets[0].dimensions[0],.5);assert.equal(template.furniture.length,0);
 console.log('PASS designs copy warehouse geometry and shared assets without mutating either source');
+const original={id:'original',kind:'design',name:'办公室 · 方案 01',scene:{...structuredClone(source),source_space:{id:'office',name:'办公室'},saved_views:[{id:'view',position:[1,2,3]}]},updated:1};
+const originalBefore=structuredClone(original),duplicate=duplicateDesign(original,[original],{id:'duplicate',now:100});
+assert.equal(duplicate.id,'duplicate');assert.equal(duplicate.updated,100);assert.equal(duplicate.name,'办公室 · 方案 01 · 副本');assert.deepEqual(duplicate.scene,original.scene);
+duplicate.scene.furniture[0].label='仅修改副本';duplicate.scene.room.outline[0][0]=99;duplicate.scene.saved_views[0].position[0]=10;duplicate.scene.source_space.name='副本内元数据';assert.deepEqual(original,originalBefore);
+assert.equal(duplicateDesign(original,[original,duplicate],{id:'duplicate2'}).name,'办公室 · 方案 01 · 副本 2');assert.throws(()=>duplicateDesign({...original,deleted_at:1},[],{id:'bad'}),/可复制/);assert.throws(()=>duplicateDesign({...original,kind:'space'},[],{id:'bad'}),/可复制/);assert.throws(()=>duplicateDesign(original,[original],{id:'original'}),/ID/);
+console.log('PASS copying a design preserves its room, layout and views independently and generates a unique copy name');
 assert.throws(()=>designFromSpace({kind:'draft',scene:template},[]),/先确认/);assert.throws(()=>designFromSpace({kind:'space',scene:{...template,space_review:{accepted:false}}},[]),/先确认/);
 assert.equal(projectKind({scene:{space_review:{accepted:false}}}),'draft');assert.equal(projectKind({scene:source}),'design');
 console.log('PASS unconfirmed drafts cannot enter design and legacy layouts keep their kind');
@@ -18,7 +24,7 @@ const liveSpace={id:'live',kind:'space',name:'Current room',scene:template},dele
 const linked=id=>({id:'design-'+id,kind:'design',scene:{...template,source_space:{id,name:id}}});
 const records=[liveSpace,deletedSpace,linked('live'),linked('deleted'),linked('missing'),{id:'legacy',kind:'design',scene:template}];
 const recordsBefore=structuredClone(records),albums=designAlbums(records);
-assert.deepEqual(albums.map(a=>a.id),['live','legacy']);assert.equal(albums[0].designs.length,1);assert.equal(albums[1].designs.length,1);
+assert.deepEqual(albums.map(a=>a.id),['live']);assert.equal(albums[0].designs.length,1);assert.deepEqual(designAlbums([{id:'demo',kind:'design',name:'小空间 · 改造练习',scene:template}]),[]);
 assert.deepEqual(records,recordsBefore);
 assert.deepEqual(designAlbums([deletedSpace,linked('deleted'),linked('missing')]),[]);
 assert.equal(designAlbums(records.map(p=>p.id==='deleted'?{...p,deleted_at:null}:p)).find(a=>a.id==='deleted').designs.length,1);

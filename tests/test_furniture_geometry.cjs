@@ -1,6 +1,6 @@
 const assert=require('assert/strict'),fs=require('fs'),path=require('path');
 const F=require('../scripts/furniture_geometry.js'),G=require('../scripts/room_geometry.js');
-const base=JSON.parse(fs.readFileSync(path.join(__dirname,'../单视频流程/试验01/vector_room/room.scene.json'),'utf8'));
+const base=JSON.parse(fs.readFileSync(path.join(__dirname,'../examples/room.scene.json'),'utf8'));
 const room=()=>({...structuredClone(base),furniture:[],assets:[]});
 const item=(id,asset='desk',position=[2,.35,0],dimensions)=>({id,label:id,kind:'furniture',asset_id:asset,mount:'floor',position,dimensions:dimensions||[...F.presets.find(a=>a.id===asset).dimensions],rotation_deg:0});
 let count=0;function test(name,fn){fn();console.log('PASS '+name);count++;}
@@ -14,4 +14,18 @@ test('a chair can split circulation without intersecting the desk',()=>{const s=
 test('GLB includes independent furniture nodes with current transform parameters',()=>{const s=room();s.furniture=[item('desk')];const bytes=G.exportGLB(s),view=new DataView(bytes.buffer),n=view.getUint32(12,true),gltf=JSON.parse(new TextDecoder().decode(bytes.slice(20,20+n)));const node=gltf.nodes.find(n=>n.name==='desk');assert(node.children.length>0);assert.deepEqual(node.extras.position,[2,.35,0]);assert.equal(node.extras.kind,'furniture');assert.equal(gltf.nodes[0].extras.mesh_coordinate_system,'RH_Y_UP');});
 test('degenerate projected faces do not capture arbitrary pointer positions',()=>{assert(F.pointDistance([50,50],[[0,0],[0,0],[1,0],[1,0]])>1);assert(F.pointDistance([.5,.5],[[0,0],[1,0],[1,1],[0,1]])===0);});
 test('asset and semantic ID failures do not pass validation',()=>{const s=room();s.furniture=[item('window_end')];assert(G.validate(s).some(e=>e.includes('重复')));s.furniture[0].asset_id='missing';assert(G.validate(s).some(e=>e.includes('家具库')));});
+test('thin free-mounted assets use the same size range as import and calibration',()=>{
+ const s=room();s.assets=[{id:'thin_panel',label:'薄板',dimensions:[.6,.4,.001],mount:'free'}];
+ s.furniture=[{...item('panel','desk',[2,.9,1]),asset_id:'thin_panel',dimensions:[.6,.4,.001],mount:'free'}];
+ assert.deepEqual(G.validate(s),[]);
+ for(const thickness of [.01,.02]){s.assets[0].dimensions[2]=thickness;s.furniture[0].dimensions[2]=thickness;assert.deepEqual(G.validate(s),[]);}
+ s.assets[0].dimensions[2]=.0009;const errors=G.validate(s);assert(errors.some(e=>e.includes('薄板')&&e.includes('高')&&e.includes('0.1 cm')));assert(!errors.some(e=>e.includes('ID 重复')));
+});
+test('asset errors distinguish duplicate IDs, invalid dimensions and unknown mounting',()=>{
+ const s=room(),a={id:'own_panel',label:'挂画',dimensions:[.6,.02,.4],mount:'free'};
+ s.assets=[a,{...a,label:'第二块挂画'}];assert(G.validate(s).some(e=>e.includes('第二块挂画')&&e.includes('ID 重复')&&e.includes('own_panel')));
+ s.assets=[{...a,dimensions:[NaN,.02,.4]}];assert(G.validate(s).some(e=>e.includes('挂画')&&e.includes('宽')&&e.includes('尺寸参数')));
+ s.assets=[{...a,mount:'unknown'}];assert(G.validate(s).some(e=>e.includes('挂画')&&e.includes('安装方式')));
+ s.assets=[null];assert.doesNotThrow(()=>G.validate(s));
+});
 console.log(`${count} furniture geometry checks passed.`);

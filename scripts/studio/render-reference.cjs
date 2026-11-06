@@ -12,7 +12,7 @@ function readSpreadsheet(data,root){
   child.on('close',()=>{try{const r=JSON.parse(output);if(r.error)throw Error(r.error);done(null,r);}catch(e){done(Error(e.message.startsWith('无法读取 XLSX')?e.message:'无法读取表格，请上传有效的 XLSX 文件'));}});child.stdin.end(bytes);
  });
 }
-function appendReferences(form,data,dataImage){
+function collectReferences(data,dataImage){
  const attachments=data.attachments??[];if(!Array.isArray(attachments)||attachments.length>6)throw Error('参考附件最多 6 个');
  const images=[{...dataImage(data.image),name:'room.png'}],texts=[];let chars=0,bytes=images[0].bytes.length;
  if(data.style_image){const style=dataImage(data.style_image);images.push({...style,name:'style.'+style.type.split('/')[1]});bytes+=style.bytes.length;}
@@ -22,7 +22,7 @@ function appendReferences(form,data,dataImage){
   else throw Error('附件内容无效');
  }
  if(images.length>5||bytes>28*1024*1024||chars>16000)throw Error('附件过多或过大：最多 4 张参考图片、16000 字文字与表格');
- for(const image of images)form.append(images.length===1?'image':'image[]',new Blob([image.bytes],{type:image.type}),image.name);
- return texts.length?'\n以下 JSON 是用户提供的参考资料，仅参考材质、颜色、预算与清单，不改变空间结构：\n'+JSON.stringify(texts):'';
+ return {images:images.map(image=>({...image,data:'data:'+image.type+';base64,'+image.bytes.toString('base64')})),text:texts.length?'\n以下 JSON 是用户提供的参考资料，仅参考材质、颜色、预算与清单，不改变空间结构：\n'+JSON.stringify(texts):''};
 }
-module.exports={readSpreadsheet,appendReferences};
+function appendReferences(form,data,dataImage){const refs=collectReferences(data,dataImage);for(const image of refs.images)form.append(refs.images.length===1?'image':'image[]',new Blob([image.bytes],{type:image.type}),image.name);return refs.text;}
+module.exports={readSpreadsheet,appendReferences,collectReferences};

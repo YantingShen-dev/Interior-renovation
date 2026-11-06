@@ -12,7 +12,7 @@ export function assetDimensions(scene,camera,host,dimensions){
  const line=new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position',new THREE.Float32BufferAttribute(vertices,3)),new THREE.LineBasicMaterial({color:0x0058a3,depthTest:false}));line.renderOrder=20;scene.add(line);
  const overlay=document.createElement('div');overlay.className='asset-dimension-labels';host.append(overlay);
  const labels=edges.map(([a,b],i)=>{const node=document.createElement('span');node.textContent=['X 宽','Y 深','Z 高'][i]+' '+(dimensions[i]*100).toFixed(1)+' cm';overlay.append(node);return {node,point:new THREE.Vector3(...a).add(new THREE.Vector3(...b)).multiplyScalar(.5).add(origin)};});
- return {update(){positionDimensionLabels(labels,camera,host);},dispose(){scene.remove(line);line.geometry.dispose();line.material.dispose();overlay.remove();}};
+ return {setVisible(value){line.visible=value;overlay.hidden=!value;},update(){positionDimensionLabels(labels,camera,host);},dispose(){scene.remove(line);line.geometry.dispose();line.material.dispose();overlay.remove();}};
 }
 
 export function positionDimensionLabels(labels,camera,host){

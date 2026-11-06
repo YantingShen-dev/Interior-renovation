@@ -5,7 +5,7 @@ try {
     $studioHealth = Invoke-RestMethod -Uri ($studioUrl + '/api/health') -TimeoutSec 2
     if ($studioHealth.app -ne 'space-studio') { throw 'Port is used by another application.' }
 } catch {
-    Start-Process -FilePath 'node' -ArgumentList @('scripts/studio/server.cjs') -WorkingDirectory $studioRoot -WindowStyle Hidden
+    Start-Process -FilePath 'node' -ArgumentList @('--use-env-proxy','scripts/studio/server.cjs') -WorkingDirectory $studioRoot -WindowStyle Hidden
     $studioReady = $false
     for ($studioAttempt = 0; $studioAttempt -lt 30; $studioAttempt++) {
         Start-Sleep -Milliseconds 250

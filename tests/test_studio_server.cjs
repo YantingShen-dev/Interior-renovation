@@ -6,19 +6,28 @@ for(const [k,v]of Object.entries({CHAT_API_BASE:'https://chat.example.test/v1',C
 const result=value=>new Response(JSON.stringify(value),{status:200,headers:{'Content-Type':'application/json'}});
 // All upstream calls are mocked. No paid jobs or real model calls are submitted.
 global.fetch=async(url,options={})=>{if(String(url).startsWith(base))return nativeFetch(url,options);requests.push({url:String(url),...options});
- if(String(url).endsWith('/api/3d/submit'))return result({status:'failed',error:{code:'TestBusinessFailure',message:'simulated upstream rejection'},request_id:'mock-trace'});
+ if(String(url).startsWith('https://network.example.test/'))throw new TypeError('fetch failed',{cause:{code:'UND_ERR_CONNECT_TIMEOUT'}});
+ if(String(url).endsWith('/api/3d/submit')){if(JSON.parse(options.body).multi_view_images)return result({id:'mock-multiview-task',status:'queued'});return result({status:'failed',error:{code:'TestBusinessFailure',message:'simulated upstream rejection'},request_id:'mock-trace'});}
  if(String(url).endsWith('/v3/files'))return result({code:0,data:{file_token:'file_mock'}});
  if(String(url).endsWith('/image-to-model'))return result({code:0,data:{task_id:'mock-task'}});
  if(String(url).endsWith('/v3/tasks/mock-task'))return result({code:0,data:{status:'running',progress:42}});
  if(String(url).endsWith('/chat/completions'))return result({choices:[{message:{content:'{"message":"保持布局","operations":[]}'}}]});
  if(String(url).endsWith('/images/edits'))return result({data:[{b64_json:'iVBORw0KGgo='}]});
+ if(String(url).includes(':generateContent'))return result({candidates:[{content:{parts:[{inlineData:{mimeType:'image/png',data:'iVBORw0KGgo='}}]}}]});
+ if(String(url).endsWith('/multimodal-generation/generation'))return result({output:{choices:[{message:{content:[{image:'https://image-result.example.test/result.png'}]}}]}});
+ if(String(url).endsWith('/images/generations'))return result({data:[{b64_json:'iVBORw0KGgo='}]});
+ if(options.headers?.['X-TC-Action']==='SubmitHunyuanImageJob')return result({Response:{JobId:'mock-image-job'}});
+ if(options.headers?.['X-TC-Action']==='QueryHunyuanImageJob')return result({Response:{JobStatusCode:'5',ResultImage:['https://image-result.example.test/result.png']}});
+ if(String(url).endsWith('/images/omni-image'))return result({code:0,data:{task_id:'mock-image-kling'}});
+ if(String(url).endsWith('/images/omni-image/mock-image-kling'))return result({code:0,data:{task_status:'succeed',task_result:{images:[{url:'https://image-result.example.test/result.png'}]}}});
+ if(String(url)==='https://image-result.example.test/result.png')return new Response(Buffer.from('iVBORw0KGgo=','base64'),{headers:{'Content-Type':'image/png'}});
  throw new Error('Unexpected outbound request: '+url);
 };
-const server=createServer();
+const server=createServer({transport:{request:(...args)=>global.fetch(...args)}});
 async function test(name,fn){await fn();console.log('PASS '+name);n++;}
 async function post(route,data,headers={}){return fetch(base+route,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(data)});}
 (async()=>{await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));base='http://127.0.0.1:'+server.address().port;
- await test('loopback service returns the updated workbench and health',async()=>{const r=await fetch(base+'/');assert.equal(r.status,200);assert((await r.text()).includes('AI 设计与渲染'));assert.equal((await (await fetch(base+'/api/health')).json()).app,'space-studio');});
+ await test('loopback service returns the updated workbench and health',async()=>{const r=await fetch(base+'/');assert.equal(r.status,200);assert((await r.text()).includes('id="render-panel"'));assert.equal((await (await fetch(base+'/api/health')).json()).app,'space-studio');});
  await test('public config exposes readiness and model IDs but never API secrets',async()=>{const config=await (await fetch(base+'/api/config')).json();assert(config.chat.configured);assert(config.tripo.configured);assert(!JSON.stringify(config).includes('secret'));assert(!JSON.stringify(config).includes('tsk_'));});
  await test('workspace files and environment cannot be downloaded',async()=>{for(const route of ['/.env.local','/scripts/studio/server.cjs','/../.env.local'])assert.equal((await fetch(base+route)).status,404);});
  await test('cross-origin requests cannot read config or submit jobs',async()=>{const response=await post('/api/design',{},{Origin:'https://other.example.test'});assert.equal(response.status,400);assert((await response.json()).error.includes('跨站'));});
@@ -33,11 +42,23 @@ async function post(route,data,headers={}){return fetch(base+route,{method:'POST
   try{const response=await post('/api/tripo',{image:'data:image/png;base64,iVBORw0KGgo='});assert.equal(response.status,400);const payload=await response.json();assert.match(payload.error,/TestBusinessFailure.*simulated upstream rejection.*mock-trace/);assert.equal(requests.length-count,1);assert(!payload.error.includes('fake-test-key'));}
   finally{if(before===undefined)delete process.env.TRIPO_PROVIDER;else process.env.TRIPO_PROVIDER=before;delete process.env.STUDIO_TRIPO_HUNYUAN_KEY;}
  });
+ await test('furniture endpoint forwards all Hunyuan references and the explicit Pro model',async()=>{
+  const before=process.env.TRIPO_PROVIDER;process.env.TRIPO_PROVIDER='hunyuan';process.env.STUDIO_TRIPO_HUNYUAN_KEY='fake-test-key';const count=requests.length;
+  try{const image='data:image/png;base64,iVBORw0KGgo=',response=await post('/api/tripo',{references:[{view:'front',image},{view:'back',image}],model:'hy-3d-3.1'});assert.equal(response.status,200);const task=await response.json();assert(task.id);const sent=JSON.parse(requests.at(-1).body);assert.equal(sent.model,'hy-3d-3.1');assert.equal(sent.multi_view_images.length,1);assert.equal(sent.multi_view_images[0].view_type,'back');assert.equal(sent.result_format,undefined);assert.equal(requests.length-count,1);const tasks=await(await fetch(base+'/api/tripo/tasks')).json();assert.equal(tasks.tasks.find(j=>j.id===task.id).input_count,2);}
+  finally{if(before===undefined)delete process.env.TRIPO_PROVIDER;else process.env.TRIPO_PROVIDER=before;delete process.env.STUDIO_TRIPO_HUNYUAN_KEY;}
+ });
+ await test('connection errors identify the provider host and network cause without secrets or resubmission',async()=>{
+  const values={TRIPO_PROVIDER:'custom',STUDIO_TRIPO_CUSTOM_BASE:'https://network.example.test/v3',STUDIO_TRIPO_CUSTOM_MODEL:'my-model',STUDIO_TRIPO_CUSTOM_KEY:'private-test-key'},before=Object.fromEntries(Object.keys(values).map(k=>[k,process.env[k]])),count=requests.length;Object.assign(process.env,values);
+  try{const response=await post('/api/tripo',{image:'data:image/png;base64,iVBORw0KGgo='});assert.equal(response.status,400);const {error}=await response.json();assert.match(error,/network.example.test.*UND_ERR_CONNECT_TIMEOUT/);assert(!error.includes('private-test-key'));assert.equal(requests.length-count,1);}
+  finally{for(const [k,v]of Object.entries(before)){if(v===undefined)delete process.env[k];else process.env[k]=v;}}
+ });
  await test('design sends measured scene context and returns JSON operations',async()=>{const response=await post('/api/design',{prompt:'保留门前通道',context:{room:{length:4,width:1.8,height:3},furniture:[]}});assert.deepEqual(await response.json(),{message:'保持布局',operations:[]});const req=requests.find(r=>r.url.endsWith('/chat/completions'));assert(JSON.parse(req.body).messages.at(-1).content.includes('1.8'));});
+ await test('design streams actual connection stages and a complete result without exposing credentials',async()=>{const response=await nativeFetch(base+'/api/design',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/x-ndjson'},body:JSON.stringify({prompt:'调整家具',context:{room:{length:4,width:3,height:3},furniture:[]},constraints:{preserve_existing:true}})});assert(response.headers.get('content-type').includes('application/x-ndjson'));const text=await response.text(),events=text.trim().split('\n').map(line=>JSON.parse(line));assert(events.some(e=>e.phase==='connected'));assert.equal(events.at(-1).type,'result');assert(!text.includes('test-chat-secret'));});
  await test('render sends an actual reference image to edits rather than text-only generation',async()=>{const response=await post('/api/render',{prompt:'极简灰白',image:'data:image/png;base64,iVBORw0KGgo='});assert((await response.json()).image.startsWith('data:image/png;base64,'));const r=requests.find(r=>r.url.endsWith('/images/edits'));assert(r.body.get('image') instanceof Blob);assert.equal(r.body.get('model'),'test-image');});
  await test('optional style reference sends two images in the right order',async()=>{const start=requests.length;const r=await post('/api/render',{prompt:'暖色木材',image:'data:image/png;base64,iVBORw0KGgo=',style_image:'data:image/jpeg;base64,/9j/'});assert.equal(r.status,200);const req=requests.slice(start).find(r=>r.url.endsWith('/images/edits')),images=req.body.getAll('image[]');assert.equal(images.length,2);assert.equal(images[0].name,'room.png');assert.equal(images[1].name,'style.jpeg');assert(req.body.get('prompt').includes('不复制其户型'));const count=requests.length;assert.equal((await post('/api/render',{prompt:'test',image:'data:image/png;base64,iVBORw0KGgo=',style_image:'file:///private'})).status,400);assert.equal(requests.length,count);});
- await test('invalid image and video inputs are rejected without provider calls',async()=>{const before=requests.length;assert.equal((await post('/api/tripo',{image:'file:///secret'})).status,400);const r=await fetch(base+'/api/reconstruction',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Video-Extension':'exe'},body:'not video'});assert.equal(r.status,400);assert.equal(requests.length,before);});
+ await test('invalid image and video inputs are rejected without provider calls',async()=>{const before=requests.length;assert.equal((await post('/api/tripo',{image:'file:///secret'})).status,400);const r=await fetch(base+'/api/video/frames',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Video-Extension':'exe'},body:'not video'});assert.equal(r.status,400);assert.equal(requests.length,before);});
  await test('video frame decoding validates input before any model call',async()=>{const before=requests.length;for(const [type,ext]of [['application/json','mp4'],['application/octet-stream','exe']]){const r=await fetch(base+'/api/video/frames',{method:'POST',headers:{'Content-Type':type,'X-Video-Extension':ext},body:'invalid'});assert.equal(r.status,400);}assert.equal(requests.length,before);});
+ await test('invalid sampling headers fail before video decoding or model calls',async()=>{const before=requests.length;for(const extra of [{'X-Frame-Count':'1000'},{'X-Frame-Interval':'0'},{'X-Frame-Count':'30','X-Frame-Limit':'24'}]){const r=await fetch(base+'/api/video/frames',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Video-Extension':'mp4',...extra},body:'invalid'});assert.equal(r.status,400);assert.match((await r.json()).error,/帧|间隔/);}assert.equal(requests.length,before);});
  await test('key field can load its saved value only through the explicit settings route',async()=>{
   const payload={kind:'chat',provider:'custom',base:'https://chat.example.test/v1'};
   assert.equal((await post('/api/config/key',payload)).status,400);
@@ -52,5 +73,13 @@ async function post(route,data,headers={}){return fetch(base+route,{method:'POST
   for(const attachments of [[{name:'bad',image:'file:///private'}],Array(7).fill({name:'x',text:'x'}),[{name:'huge.txt',text:'x'.repeat(16001)}]])assert.equal((await post('/api/render',{image:'data:image/png;base64,iVBORw0KGgo=',prompt:'x',attachments})).status,400);
   assert.equal(requests.length,count);
  });
+ await test('all five added image services use their native protocols through the public render API',async()=>{
+  const {getProvider}=require('../scripts/studio/provider-catalog.cjs');
+  for(const id of ['gemini','qwen','hunyuan','jimeng','kling']){
+   const p=getProvider('image',id),pre='STUDIO_IMAGE_'+id.toUpperCase()+'_',values={IMAGE_PROVIDER:id,[pre+'KEY']:'fake-image-key',[pre+'MODEL']:p.models[0],[pre+'BASE']:p.base,[pre+'ACCESS_ID']:'fake-access-id',[pre+'AUTH_MODE']:'key'},before=Object.fromEntries(Object.keys(values).map(k=>[k,process.env[k]]));Object.assign(process.env,values);
+   try{const response=await post('/api/render',{image:'data:image/png;base64,iVBORw0KGgo=',prompt:'保持布局，白墙'});assert.equal(response.status,200,id);let r=await response.json();if(r.status==='queued'){assert.match(r.id,/^[a-f0-9-]{36}$/);const query=await fetch(base+'/api/render/'+r.id);assert.equal(query.status,200);r=await query.json();}assert.equal(r.status,'success',id);assert(r.image.startsWith('data:image/png;base64,'),id);}
+   finally{for(const [k,v]of Object.entries(before)){if(v===undefined)delete process.env[k];else process.env[k]=v;}}
+  }
+ });
  console.log(n+' local API checks passed with all provider requests mocked.');
-})().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>{global.fetch=nativeFetch;server.close();});
+})().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>{global.fetch=nativeFetch;server.close();const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),target=path.resolve(process.env.STUDIO_ENV_FILE+'.data');if(path.dirname(target)!==path.resolve(os.tmpdir())||!/^studio-test-env-[a-f0-9-]+\.data$/.test(path.basename(target)))throw Error('Unsafe test cleanup path');fs.rmSync(target,{recursive:true,force:true});});

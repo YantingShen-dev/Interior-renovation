@@ -1,30 +1,48 @@
 /* Loopback-only provider bridge. Never serves the workspace or environment files. */
-const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto'),{spawn}=require('child_process');
-const ROOT=path.resolve(__dirname,'../..'),ENV=process.env.STUDIO_ENV_FILE||path.join(ROOT,'.env.local'),RUNS=path.join(ROOT,'单视频流程/网页任务');
+const http=require('http'),fs=require('fs'),path=require('path');
+const ROOT=path.resolve(__dirname,'../..'),ENV=process.env.STUDIO_ENV_FILE||path.join(ROOT,'.env.local');
 const providerConfig=require('./provider-config.cjs');
-const {readSpreadsheet,appendReferences}=require('./render-reference.cjs');
-const reconstructionRuntime=require('./reconstruction-runtime.cjs');
-const videoRoom=require('./video-room-api.cjs');
+const {readSpreadsheet}=require('./render-reference.cjs');
+const {downloadMesh}=require('./mesh-download.cjs');
+const {createHunyuanTransport}=require('./hunyuan-network.cjs');
+const {pipeline}=require('node:stream/promises');
 function rawEnv(){const out={...process.env};if(fs.existsSync(ENV))for(const line of fs.readFileSync(ENV,'utf8').split(/\r?\n/)){const m=line.match(/^([A-Z_0-9]+)=(.*)$/);if(m)out[m[1]]=m[2].trim().replace(/^(['"])(.*)\1$/,'$2');}return out;}
+require('./network-env.cjs').configureNetwork(process.env,rawEnv().STUDIO_DIRECT_HOSTS);
 function env(){return providerConfig.resolveEnv(rawEnv());}
 function configuration(){return providerConfig.configuration(rawEnv());}
 function saveConfig(data){const text=fs.existsSync(ENV)?fs.readFileSync(ENV,'utf8'):'';fs.writeFileSync(ENV,providerConfig.updateConfig(text,rawEnv(),data));return configuration();}
 async function body(req,limit=45*1024*1024){const chunks=[];let size=0;for await(const c of req){size+=c.length;if(size>limit)throw new Error('请求文件过大');chunks.push(c);}return Buffer.concat(chunks);}
 function dataImage(s){const m=String(s).match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);if(!m)throw new Error('图片格式无效');const bytes=Buffer.from(m[2],'base64');if(bytes.length>10*1024*1024)throw new Error('图片不能超过 10MB');return {bytes,type:m[1]};}
-async function provider(url,key,options={}){const {rawResult=false,...requestOptions}=options;const response=await fetch(url,{...requestOptions,headers:{...(key?{Authorization:'Bearer '+key}:{}),...options.headers},signal:options.signal?AbortSignal.any([options.signal,AbortSignal.timeout(240000)]):AbortSignal.timeout(240000)});let result;try{result=await response.json();}catch(e){throw new Error('服务商返回了非 JSON 结果，HTTP '+response.status);}if(!response.ok||result.code!==undefined&&result.code!==0)throw new Error('服务商请求失败（'+response.status+'）：'+String(result.error?.message||result.message||result.msg||'请检查模型和账户配置').slice(0,400));return rawResult?result:result.data??result;}
-const meshBridge=require('./mesh-providers.cjs').createMeshBridge({dataImage,storageDir:process.env.STUDIO_ENV_FILE?path.join(path.dirname(ENV),'mesh-jobs'):path.join(ROOT,'.cache/mesh-jobs'),credentials:j=>{const e=providerConfig.resolveEnv({...rawEnv(),TRIPO_PROVIDER:j.provider});return {key:e.TRIPO_API_KEY,base:e.TRIPO_API_BASE.replace(/\/$/,'')};},request:(url,key,options={})=>provider(url,key,{...options,rawResult:url.startsWith('https://tokenhub.tencentmaas.com/')||url.startsWith('https://api.meshy.ai/')}),download:async uri=>{const r=await fetch(uri,{signal:AbortSignal.timeout(120000)});if(!r.ok)throw Error('3D 模型下载失败');if(Number(r.headers.get('content-length'))>30*1024*1024)throw Error('模型超过 30MB');return Buffer.from(await r.arrayBuffer());}});
-const jobs=new Map();
-function jobFile(id){if(!/^[a-f0-9-]{36}$/.test(id))throw new Error('任务 ID 无效');return path.join(RUNS,id,'webjob.json');}
-function saveJob(job){jobs.set(job.id,job);fs.writeFileSync(jobFile(job.id),JSON.stringify(job,null,2));}
-function getJob(id){if(jobs.has(id))return jobs.get(id);const file=jobFile(id);if(!fs.existsSync(file))throw new Error('找不到该重建任务');const j=JSON.parse(fs.readFileSync(file));if(j.status==='running'){j.status='failed';j.message='服务曾中断。已保存输入及中间结果，请重新启动或通过命令行继续该任务。';}return j;}
-function startWorker(job,cloud){const directory=path.dirname(jobFile(job.id)),project=path.join(directory,'project'),args=['-u',path.join(ROOT,'scripts/run_video_pipeline.py'),'--video',path.join(directory,'input.'+job.extension),'--project',project];if(cloud)args.push('--cloud');
- const command=job.backend==='wsl-planargs'?reconstructionRuntime.worker(ROOT,path.join(directory,'input.'+job.extension),project):{file:path.join(ROOT,'.venv/Scripts/python.exe'),args,options:{cwd:ROOT,windowsHide:true,env:{...env(),PYTHONIOENCODING:'utf-8'}}};const child=spawn(command.file,command.args,command.options);const log=fs.createWriteStream(path.join(directory,'worker.log'));child.stdout.pipe(log);child.stderr.pipe(log);child.stdout.on('data',chunk=>{const t=chunk.toString();job.message=/KIRI|cloud/i.test(t)?'云端重建与结果下载中…':/geometry_priors/.test(t)?'PlanarGS：估计深度与几何先验…':/planar_priors/.test(t)?'PlanarGS：识别墙面、地面与门窗候选…':/training/.test(t)?'PlanarGS：训练三维高斯模型…':/Starting mesh/.test(t)?'PlanarGS：导出重建网格…':/COLMAP|mapping|sparse|registered/i.test(t)?'抽帧完成，进行多视角点云重建…':'正在分析视频、扫描和结构候选…';saveJob(job);});
- child.on('error',e=>{job.status='failed';job.message='重建程序未能启动：'+e.message;saveJob(job);});child.on('exit',code=>{if(code!==0){job.status='failed';job.message='重建失败，详情保存在该任务的 worker.log；已有结果已保留。';if(job.backend==='wsl-planargs'){try{const prep=JSON.parse(fs.readFileSync(path.join(project,'preparation/preparation.json'),'utf8'));if(prep.status==='failed'&&Number.isFinite(prep.coverage))job.message='视频未能形成连续空间：最大片段仅匹配 '+prep.registered_images+'/'+prep.sampled_frames.length+' 帧（'+Math.round(prep.coverage*100)+'%）。请缓慢移动并保持重叠视角后重拍；本次输入和诊断已保留。';}catch{}}}else{job.status='review';job.message=reviewMessage(project);}saveJob(job);});}
-function evidenceFor(project){const read=p=>JSON.parse(fs.readFileSync(path.join(project,p),'utf8'));let points=[],planes=[],frame='arbitrary';if(fs.existsSync(path.join(project,'structure/cleaned_sample.json'))){points=read('structure/cleaned_sample.json').points;planes=read('structure/aligned_planes.json').planes;frame='provisional_aligned_y_up';}else if(fs.existsSync(path.join(project,'structure/web_sample.json'))){points=read('structure/web_sample.json').points;planes=read('structure/observed_planes.json').planes;frame='raw_scan';}else if(fs.existsSync(path.join(project,'preparation/sparse-preview.json')))return read('preparation/sparse-preview.json');else if(fs.existsSync(path.join(project,'local/sparse/preview_data.json')))points=read('local/sparse/preview_data.json').points;return {points:points.filter((_,i)=>i%2===0),planes,frame,registered:false};}
-function reviewMessage(project){try{const m=JSON.parse(fs.readFileSync(path.join(project,'project.json'),'utf8'));if(m.status==='partial')return '已生成局部稀疏点云；相机轨迹未连通，已暂停完整重建。可分别查看片段。';}catch{}return '重建完成。请核对净尺寸与门窗，生成矢量房间。';}
-function confirmScene(job,input){const dimensions=Array.isArray(input)?input:null;if(!dimensions){if(job.status!=='review')throw new Error('重建尚未完成');const plan=require('../plan_geometry.js'),scene=input?.walls?plan.createWallScene(input.walls,input.height,input.openings||[]):plan.createScene(input?.outline,input?.height,input?.openings||[]);const errors=require('./state.cjs').G.validate(scene);if(errors.length)throw new Error(errors.join('；'));const project=path.join(path.dirname(jobFile(job.id)),'project'),manifest=JSON.parse(fs.readFileSync(path.join(project,'project.json')));scene.provenance={source_video_sha256:manifest.input.video_sha256,model_type:'user_calibrated_outline',scan_overlay_registered:false,auto_extraction_claim:false};scene.space_review.accepted=false;fs.writeFileSync(path.join(project,'confirmed-room.scene.json'),JSON.stringify(scene,null,2));return scene;}if(job.status!=='review')throw new Error('重建尚未完成');if(!Array.isArray(dimensions)||dimensions.length!==3||dimensions.some(v=>!Number.isFinite(v)||v<.3||v>100))throw new Error('房间净尺寸无效');const [L,W,H]=dimensions,project=path.join(path.dirname(jobFile(job.id)),'project'),manifest=JSON.parse(fs.readFileSync(path.join(project,'project.json'))),scene={schema_version:'room-pilot-1',units:'meter',coordinate_system:'RH_Z_UP',room:{length:L,width:W,height:H,dimension_source:'user_confirmed_interior_measurements',height_confirmed:true},walls:[['wall_side_a',[0,0],[L,0],[0,-1]],['wall_side_b',[0,W],[L,W],[0,1]],['wall_window',[0,0],[0,W],[-1,0]],['wall_door_end',[L,0],[L,W],[1,0]]].map(([id,start,end,outward])=>({id,label:id,kind:'wall',start,end,outward,height:H,thickness:.08,status:'user_dimension_constrained'})),openings:[],assets:[],furniture:[],layout_settings:{clearance_m:.8},provenance:{source_video_sha256:manifest.input.video_sha256,model_type:'user_measurement_constraint_room',scan_overlay_registered:false,auto_extraction_claim:false},space_review:{accepted:false,notes:[],existing_furniture:[]}};fs.writeFileSync(path.join(project,'confirmed-room.scene.json'),JSON.stringify(scene,null,2));return scene;}
+async function provider(url,key,options={}){
+ const {rawResult=false,fetcher=fetch,...requestOptions}=options;let response;
+ try{response=await fetcher(url,{...requestOptions,headers:{...(key?{Authorization:'Bearer '+key}:{}),...options.headers},signal:options.signal?AbortSignal.any([options.signal,AbortSignal.timeout(240000)]):AbortSignal.timeout(240000)});}
+ catch(error){if(error.code==='HUNYUAN_ROUTE_UNAVAILABLE')throw error;const code=error.cause?.code||error.code||error.name;throw new Error('连接 '+new URL(url).hostname+' 失败（'+String(code).replace(/[^A-Z_a-z0-9]/g,'').slice(0,60)+'）。请检查工作台运行权限和代理配置。');}
+ let result;try{result=await response.json();}catch{throw new Error('服务商返回了非 JSON 结果，HTTP '+response.status);}
+ const detail=String(result.error?.message||result.message||result.msg||'请检查模型和账户配置');
+ if(response.status===402&&new URL(url).hostname==='tokenhub.tencentmaas.com'){
+  const note=/postpaid|后付费/i.test(detail)?'当前模型的免费额度已用完。请在 TokenHub 在线推理服务为该模型启用后付费，并核对服务状态。':'请在 TokenHub 核对该模型的服务状态、用量和计费设置。';
+  throw Error('混元计费拒绝（402）。'+note);
+ }
+ if(!response.ok||result.code!==undefined&&result.code!==0)throw new Error('服务商请求失败（'+response.status+'）：'+detail.slice(0,400));return rawResult?result:result.data??result;
+}
+function createFurnitureBridge(transport){
+ return require('./mesh-providers.cjs').createMeshBridge({
+  dataImage,
+  storageDir:process.env.STUDIO_ENV_FILE?path.join(ENV+'.data','mesh-jobs'):path.join(ROOT,'.cache/mesh-jobs'),
+  credentials:job=>{
+   const profile=providerConfig.resolveEnv({...rawEnv(),TRIPO_PROVIDER:job.provider});
+   return {key:profile.TRIPO_API_KEY,base:profile.TRIPO_API_BASE.replace(/\/$/,'')};
+  },
+  request:(url,key,options={})=>{
+   const host=new URL(url).hostname,hunyuan=host==='tokenhub.tencentmaas.com';
+   return provider(url,key,{...options,rawResult:hunyuan||host==='api.meshy.ai',fetcher:hunyuan?transport.request:fetch});
+  },
+  download:(url,file,service)=>downloadMesh(url,file,service==='hunyuan'?transport.download:fetch)
+ });
+}
+const imageBridge=require('./image-providers.cjs').createImageBridge({request:provider,dataImage,storageDir:process.env.STUDIO_ENV_FILE?path.join(ENV+'.data','render-jobs'):path.join(ROOT,'.cache/render-jobs'),credentials:job=>providerConfig.resolveEnv({...rawEnv(),IMAGE_PROVIDER:job.provider}),download:async url=>{const r=await fetch(url,{signal:AbortSignal.timeout(120000)});if(!r.ok)throw Error('效果图下载失败，可继续查询原任务，无需重新生成');if(Number(r.headers.get('content-length'))>30*1024*1024)throw Error('效果图超过 30MB');const bytes=Buffer.from(await r.arrayBuffer());if(bytes.length>30*1024*1024)throw Error('效果图超过 30MB');const mime=bytes.subarray(0,4).equals(Buffer.from([137,80,78,71]))?'image/png':bytes[0]===255&&bytes[1]===216?'image/jpeg':bytes.toString('ascii',8,12)==='WEBP'?'image/webp':null;if(!mime)throw Error('服务商返回的文件不是 PNG、JPEG 或 WebP 效果图');return 'data:'+mime+';base64,'+bytes.toString('base64');}});
 const modelingAPI=require('./modeling-api.cjs').createAPI({root:ROOT,env,body,provider});
-async function handle(req,res){
+async function handle(req,res,meshBridge,transport){
  const hostname=(req.headers.host||'').split(':')[0];if(!['127.0.0.1','localhost'].includes(hostname))throw new Error('仅允许本机访问');const origin=req.headers.origin;if(origin&&origin!=='http://'+req.headers.host)throw new Error('不允许跨站请求');
  const url=new URL(req.url,'http://'+req.headers.host),route=url.pathname;const json=(value,status=200)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(value));};
  if(req.method==='GET'&&route==='/'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});return fs.createReadStream(path.join(ROOT,'打开家具布置.html')).pipe(res);}
@@ -43,36 +61,37 @@ async function handle(req,res){
   if(req.headers['content-type']!=='application/octet-stream')throw Error('请选择视频文件');
   const extension=String(req.headers['x-video-extension']||'').toLowerCase();
   if(!['mp4','mov','mkv','webm','avi','m4v'].includes(extension))throw Error('视频格式不支持');
+  const sampling=require('./video-sampling.cjs').samplingOptions({mode:req.headers['x-frame-interval']!==undefined?'interval':'count',count:req.headers['x-frame-count'],interval:req.headers['x-frame-interval'],limit:req.headers['x-frame-limit']});
   if(handle.extracting)throw Error('正在读取另一个视频，请稍后重试');
   handle.extracting=true;const controller=new AbortController(),closed=()=>controller.abort();res.once('close',closed);
-  try{const bytes=await body(req,300*1024*1024);return json(await require('./video-extract.cjs').extract(ROOT,bytes,extension,{signal:controller.signal}));}
+  try{const bytes=await body(req,300*1024*1024);return json(await require('./video-extract.cjs').extract(ROOT,bytes,extension,{signal:controller.signal,sampling,env:rawEnv()}));}
   finally{handle.extracting=false;res.off('close',closed);}
  }
- if(req.method==='GET'&&route==='/api/reconstruction/runtime')return json(await reconstructionRuntime.status(ROOT));
- if(req.method==='GET'&&route==='/api/reconstruction/latest-frames')return json(videoRoom.latestFrames(RUNS));
- const frameRoute=route.match(/^\/api\/reconstruction\/([a-f0-9-]{36})\/frames(?:\/(\d{6}\.jpg))?$/);
- if(req.method==='GET'&&frameRoute){if(!frameRoute[2])return json(videoRoom.frameIndex(RUNS,frameRoute[1]));const file=videoRoom.frameFile(RUNS,frameRoute[1],frameRoute[2]);res.writeHead(200,{'Content-Type':'image/jpeg','Cache-Control':'private, max-age=3600','X-Content-Type-Options':'nosniff'});return fs.createReadStream(file).pipe(res);}
- if(req.method==='GET'&&route==='/api/reconstruction/latest-preview'){
-  const candidates=[];
-  if(fs.existsSync(RUNS))for(const entry of fs.readdirSync(RUNS)){if(!/^[a-f0-9-]{36}$/.test(entry))continue;try{const job=getJob(entry),project=path.join(RUNS,entry,'project'),file=path.join(project,'preparation/sparse-preview.json');if(job.status==='review'&&fs.existsSync(file))candidates.push({id:entry,time:fs.statSync(path.join(RUNS,entry,'input.'+job.extension)).mtimeMs});}catch{}}
-  candidates.sort((a,b)=>b.time-a.time);return json({id:candidates[0]?.id||null});
- }
- if(req.method==='POST'&&route==='/api/reconstruction'){
-  if(req.headers['content-type']!=='application/octet-stream')throw new Error('请选择视频文件');const extension=String(req.headers['x-video-extension']).toLowerCase();if(!['mp4','mov','mkv','webm','avi','m4v'].includes(extension))throw new Error('视频格式不支持');const cloud=req.headers['x-use-cloud']==='true';if(cloud&&!env().KIRI_API_KEY)throw new Error('请先配置 KIRI API Key');let backend='windows-colmap';if(!cloud&&reconstructionRuntime.config(ROOT)){const runtime=await reconstructionRuntime.status(ROOT);if(!runtime.ready)throw new Error(runtime.message);backend='wsl-planargs';if([...jobs.values()].some(j=>j.backend===backend&&j.status==='running'))throw new Error('已有 PlanarGS 任务占用显卡，请等待完成后再提交。');}else if(!fs.existsSync(path.join(ROOT,'.venv/Scripts/python.exe')))throw new Error(cloud?'KIRI 视频流程需要独立的 Windows Python 环境，请参阅项目部署说明。':'本机视频重建环境尚未配置，请参阅 scripts/planargs/README.md。');
-  const id=crypto.randomUUID(),directory=path.dirname(jobFile(id));fs.mkdirSync(directory,{recursive:true});fs.writeFileSync(path.join(directory,'input.'+extension),await body(req,300*1024*1024));if(backend==='wsl-planargs'&&[...jobs.values()].some(j=>j.backend===backend&&j.status==='running'))throw new Error('已有 PlanarGS 任务占用显卡，视频已保留在任务目录，请稍后提交。');const job={id,extension,status:'running',message:'视频已保存，开始抽帧重建。',cloud,backend};saveJob(job);startWorker(job,cloud);return json({id});}
- const scan=route.match(/^\/api\/reconstruction\/([a-f0-9-]+)(\/confirm)?$/);if(scan){const job=getJob(scan[1]),project=path.join(path.dirname(jobFile(job.id)),'project');if(req.method==='POST'&&scan[2]){const input=JSON.parse((await body(req)).toString());return json({scene:confirmScene(job,input.outline||input.walls?input:input.dimensions)});}if(req.method==='GET'){const value={id:job.id,status:job.status,message:job.message};if(job.status==='review'){value.evidence=evidenceFor(project);value.source_video_sha256=JSON.parse(fs.readFileSync(path.join(project,'project.json'))).input.video_sha256;}return json(value);}}
+ if(req.method==='GET'&&/^\/api\/render\/[a-f0-9-]{36}$/.test(route))return json(await imageBridge.poll(route.slice('/api/render/'.length)));
  if(req.method==='GET'&&route==='/api/tripo/tasks')return json({tasks:meshBridge.list()});
- if(req.method==='GET'&&route.startsWith('/api/tripo/'))return json(await meshBridge.poll(route.slice('/api/tripo/'.length)));
+ if(req.method==='GET'&&route==='/api/tripo/network')return json({routes:await transport.check('https://tokenhub.tencentmaas.com/api/3d/submit')});
+ const mesh=route.match(/^\/api\/tripo\/([a-f0-9-]{36})(\/model)?$/);
+ if(req.method==='GET'&&mesh){
+  const id=mesh[1];
+  if(!mesh[2])return json(await meshBridge.poll(id,{retryDownload:url.searchParams.get('retry_download')==='1'}));
+  const file=meshBridge.modelFile(id);
+  if(!file)return json({error:'没有可用的本地模型文件'},404);
+  res.writeHead(200,{'Content-Type':'model/gltf-binary','Content-Length':fs.statSync(file).size,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'});
+  return pipeline(fs.createReadStream(file),res);
+ }
  if(req.method!=='POST'){res.writeHead(404);return res.end('Not found');}
  if(!req.headers['content-type']?.startsWith('application/json'))throw new Error('API 请求须使用 JSON');const data=JSON.parse((await body(req)).toString('utf8')),e=env();
  if(route==='/api/render/attachment')return json(await readSpreadsheet(data,ROOT));
  if(route==='/api/config/key'){if(req.headers['x-studio-key-access']!=='settings')throw Error('请从配置服务查看密钥');return json(providerConfig.savedKey(rawEnv(),data));}
  if(route==='/api/config')return json(saveConfig(data));
- if(route==='/api/tripo'){providerConfig.requireProvider('tripo',e);if(!configuration().tripo.configured)throw Error('请先配置 3D 服务地址、模型 ID 和密钥');return json(await meshBridge.submit(e,data.image));}
- if(route==='/api/design'){const chatProvider=providerConfig.requireProvider('chat',e);if(!configuration().chat.configured)throw new Error('请先配置对话 API 地址、模型 ID 和密钥');if(!data.prompt||!data.context?.room)throw new Error('缺少设计需求或空间数据');const system='你是室内布局助手。所有尺寸单位米。仅使用提供的家具库。保持房间和门窗及家具尺寸不变，考虑旋转后外包络、门前预留区和通行宽度。只返回 JSON：{"message":"中文说明及取舍","operations":[{"type":"update","id":"家具ID","position":[x,y,z],"rotation_deg":0},{"type":"add","asset_id":"家具库ID","position":[x,y,z],"rotation_deg":0},{"type":"remove","id":"家具ID"}]}。挂墙对象使用 wall_id/u/position 的底高；落地 z=0，顶装 z=层高-家具高。无可行方案时返回空 operations 并说明。最多30操作。';const messages=[{role:'system',content:system},...(data.messages||[]).filter(m=>['user','assistant'].includes(m.role)).slice(-8).map(m=>({role:m.role,content:String(m.content).slice(0,20000)})),{role:'user',content:JSON.stringify({request:data.prompt,space:data.context})}];const r=await provider(e.CHAT_API_BASE.replace(/\/$/,'')+'/chat/completions',e.CHAT_API_KEY,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:e.CHAT_MODEL,messages,...(chatProvider?.jsonMode===false?{max_tokens:8192}:{response_format:{type:'json_object'}})})});const text=r.choices?.[0]?.message?.content;if(!text)throw new Error('对话模型未返回布局 JSON');return json(JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g,'')));}
- if(route==='/api/render'){providerConfig.requireProvider('image',e);if(!configuration().image.configured)throw new Error('请先配置支持 Images Edits 的图像 API 地址、模型 ID 和密钥');const form=new FormData(),referenceText=appendReferences(form,data,dataImage);form.append('model',e.IMAGE_MODEL);form.append('prompt','第一张图片是当前空间，严格保持其相机透视、门窗和家具布局，不添加不存在的开口。如有后续参考图片，只参考其风格、色彩、材质与光照，不复制其户型。生成写实装修效果图。用户要求：'+String(data.prompt).slice(0,5000)+referenceText);form.append('n','1');const r=await provider(e.IMAGE_API_BASE.replace(/\/$/,'')+'/images/edits',e.IMAGE_API_KEY,{method:'POST',body:form});const item=(Array.isArray(r)?r:r.data)?.[0]||r;if(item.b64_json)return json({image:'data:image/png;base64,'+item.b64_json});if(item.url&&/^https:\/\//.test(item.url))return json({image:item.url});throw new Error('图像服务未返回 b64_json 或图片 URL');}
+ if(route==='/api/tripo'){providerConfig.requireProvider('tripo',e);if(!configuration().tripo.configured)throw Error('请先配置 3D 服务地址、模型 ID 和密钥');return json(await meshBridge.submit(e,data));}
+ if(route==='/api/design'){const chatProvider=providerConfig.requireProvider('chat',e);if(!configuration().chat.configured)throw new Error('请先配置对话 API 地址、模型 ID 和密钥');if(!data.prompt||!data.context?.room)throw new Error('缺少设计需求或空间数据');return require('./design-service.cjs').handleDesign(req,res,{env:e,provider:chatProvider,input:data});}
+ if(route==='/api/render'){providerConfig.requireProvider('image',e);return json(await imageBridge.submit(e,data));}
  res.writeHead(404);res.end('Not found');
 }
-function createServer(){return http.createServer((req,res)=>{handle(req,res).catch(error=>{if(!res.headersSent){res.writeHead(400,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify({error:error.message}));}else res.end();});});}
+function createServer({transport=createHunyuanTransport({env:rawEnv()})}={}){
+ const meshBridge=createFurnitureBridge(transport);
+ return http.createServer((req,res)=>{handle(req,res,meshBridge,transport).catch(error=>{if(!res.headersSent){res.writeHead(400,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify({error:error.message}));}else res.end();});});
+}
 if(require.main===module){const server=createServer(),port=Number(process.env.STUDIO_PORT||8765);server.listen(port,'127.0.0.1',()=>console.log('Space Studio http://127.0.0.1:'+port));server.on('error',error=>{console.error(error.code==='EADDRINUSE'?'工作台已在此端口运行：http://127.0.0.1:'+port:error.message);process.exitCode=1;});}
-module.exports={createServer,configuration,confirmScene,evidenceFor,dataImage};
+module.exports={createServer,configuration,dataImage};
