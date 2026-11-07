@@ -101,3 +101,14 @@ button:before{pointer-events:none}.hub-brand,.hub-header nav button,.text-button
  #settings-dialog .settings-body{padding:0 12px 16px 18px}
  #settings-dialog .settings-footer{padding:14px 18px}
 }
+
+.locale-toggle{flex:none;white-space:nowrap}
+.asset-product-link{font-size:12px;color:var(--brand-blue,#285f98);white-space:nowrap}
+html[lang="en"] .hub-header nav button{white-space:nowrap}
+html[lang="en"] .tripo-stages li{overflow-wrap:anywhere}
+
+#tripo-dialog[data-intake="glb"] .tripo-generation,#tripo-dialog:not([data-intake="glb"]) .tripo-glb-note{display:none}
+
+.asset-metadata-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:12px}
+.asset-metadata-row>label{display:flex;flex-direction:column;justify-content:space-between;min-width:0}
+@media(max-width:460px){.asset-metadata-row{grid-template-columns:minmax(0,1fr)}}

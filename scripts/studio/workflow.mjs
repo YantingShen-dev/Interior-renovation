@@ -1,3 +1,5 @@
+import {t} from './locale.mjs';
+import {readAssetFields} from './asset-fields.mjs';
 import {calibrateFurniture} from './furniture-calibration.mjs';
 import {setupRenderViewer} from './render-viewer.mjs';
 import {setupRenderAttachments} from './render-attachments.mjs';
@@ -26,7 +28,7 @@ export function setupWorkflow({store,getViewport,changed,toast,download}){
  const automaticRoom=setupAutomaticRoom({settings:async()=>{await settings();await new Promise(resolve=>$('settings-dialog').addEventListener('close',resolve,{once:true}));},apply:async scene=>{await reconstructionHooks.applyAIModel(scene);}});
  on('video-room-open',()=>automaticRoom.open({file:$('space-video').files?.[0]}));
  async function api(url,data,options={}){if(location.protocol==='file:')throw new Error('请先运行项目里的「启动工作台.cmd」，在本地服务中使用上传和 AI 功能');const r=await fetch(url,{method:data===undefined?'GET':'POST',headers:data===undefined?{}:{'Content-Type':'application/json'},...(data===undefined?{}:{body:JSON.stringify(data)}),...options});const result=await r.json();if(!r.ok)throw new Error(result.error||'本地服务请求失败');return result;}
- function message(text,role='assistant'){const node=document.createElement('div');node.className='chat-message '+role;node.textContent=text;$('chat-messages').append(node);node.scrollIntoView?.({block:'nearest'});}
+ function message(text,role='assistant'){const node=document.createElement('div');node.className='chat-message '+role;if(role==='user'||role==='assistant')node.dataset.userText='';node.textContent=text;$('chat-messages').append(node);node.scrollIntoView?.({block:'nearest'});}
  function designStatus(state,text){const node=$('design-status');node.hidden=false;if(node.dataset.state!==state)node.dataset.state=state;const label=$('design-status-text');if(label.textContent!==text)label.textContent=text;}
  function clearDesignRequest(){if(designRequest){clearInterval(designRequest.timer);clearTimeout(designRequest.timeout);}designRequest=null;$('design-stop').hidden=true;$('design-send').disabled=false;$('design-send').textContent='发送并生成布置提案';$('design-send').setAttribute('aria-busy','false');$('chat-messages').setAttribute('aria-busy','false');}
  function persistReview(){changed();renderReview();}
@@ -60,7 +62,7 @@ export function setupWorkflow({store,getViewport,changed,toast,download}){
  async function settings(){try{await loadConfig();$('settings-note').textContent='密钥保存在本机，默认掩码显示；点击眼睛查看，修改后保存。已配置：'+['chat','image','tripo'].filter(k=>config[k].configured).map(k=>({chat:'视觉与对话',image:'图像编辑',tripo:'图片转 3D'})[k]).join('、');for(const [id,value]of [['chat-base',config.chat.base],['chat-model',config.chat.model],['image-base',config.image.base],['image-model',config.image.model],['tripo-base',config.tripo.base],['tripo-model',config.tripo.model]])$('cfg-'+id).value=value||'';}catch(e){$('settings-note').textContent=e.message;}for(const k of ['chat','image','tripo'])$('cfg-'+k+'-key').value='';providerUI?.load(config);$('settings-dialog').showModal();}
  $('settings-dialog').addEventListener('close',()=>providerUI?.clear());
  async function readData(file,max=10*1024*1024){if(!file)throw new Error('请选择图片或 GLB 文件');if(file.size>max)throw new Error(`文件超过 ${max/1024/1024} MB`);return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file);});}
- function furnitureParams(){const dimensions=['width','depth','height'].map(k=>$('tripo-'+k).value.trim()===''?null:Number($('tripo-'+k).value)/100);if(dimensions.some(v=>v!==null&&(!Number.isFinite(v)||v<.001||v>100)))throw new Error('选填尺寸须在 0.1cm–100m 之间');return {label:$('tripo-name').value.trim()||'我的家具',dimensions,mount:$('tripo-mount').value,category:$('tripo-category').value,price_cny:$('tripo-price').value===''?undefined:Number($('tripo-price').value)};}
+ function furnitureParams(){const dimensions=['width','depth','height'].map(k=>$('tripo-'+k).value.trim()===''?null:Number($('tripo-'+k).value)/100);if(dimensions.some(v=>v!==null&&(!Number.isFinite(v)||v<.001||v>100)))throw new Error('选填尺寸须在 0.1cm–100m 之间');return {...readAssetFields('tripo',t('我的家具')),dimensions,mount:$('tripo-mount').value,category:$('tripo-category').value};}
  async function importAsset(params,glb,image=null,{id='tripo_'+store.id(),cover=null}={}){
   const next=copy(store.scene),asset={...params,id,style:'box',brand:'自有家具',dimension_source:params.dimension_source||'estimated_pending_review',geometry_type:'imported_glb',model_glb:glb,color:[.6,.6,.6,1]};
   if(image)asset.reference_image=image;if(cover){asset.cover_image=cover;asset.cover_source='calibration_preview';}
@@ -75,7 +77,15 @@ export function setupWorkflow({store,getViewport,changed,toast,download}){
  on('existing-add',()=>{const next=copy(store.scene);next.space_review=copy(review());next.space_review.existing_furniture.push({label:'已有家具',dimensions:[.8,.4,.75],mount:'floor',confirmed:false});store.commit(next);persistReview();});
  for(const [id,type]of [['review-ask','question'],['review-answer','answer']])on(id,()=>{const text=$('review-question').value.trim();if(!text)throw new Error('请先输入核对问题或记录');const next=copy(store.scene);next.space_review=copy(review());next.space_review.notes.push({type,text,created_at:new Date().toISOString()});store.commit(next);$('review-question').value='';persistReview();});
  on('finish-replica',()=>{if(store.scene.space_review?.empty)throw new Error('请先勾绘并闭合空间轮廓');if(!$('review-ack').checked)throw new Error('请勾选尺寸核对确认');const next=copy(store.scene);next.space_review=copy(review());next.space_review.accepted=true;next.space_review.confirmed_at=new Date().toISOString();store.commit(next);changed();if(reconstructionHooks){return reconstructionHooks.confirm();}showStage('layout');toast('空间已确认，可以开始摆家具');});
- on('api-settings',settings);on('tripo-config',settings);on('tripo-open',()=>{$('tripo-dialog').showModal();loadConfig().catch(e=>toast(e.message,true));});
+ function openFurnitureIntake(mode='generate'){
+  const dialog=$('tripo-dialog');
+  dialog.dataset.intake=mode;
+  $('tripo-heading').textContent=mode==='glb'?'导入 GLB 模型':'扫描 / 图片录入家具';
+  dialog.showModal();
+  dialog.scrollTop=0;
+  if(mode==='generate')loadConfig().catch(e=>toast(e.message,true));
+ }
+ on('api-settings',settings);on('tripo-config',settings);on('tripo-open',()=>openFurnitureIntake());
  on('tripo-network',async()=>{
   const button=$('tripo-network'),label=$('tripo-network-status');
   button.disabled=true;label.textContent='正在检查混元直连和代理…';
@@ -181,5 +191,5 @@ export function setupWorkflow({store,getViewport,changed,toast,download}){
  function bindStyleReference(){renderAttachments=setupRenderAttachments({api,readData,toast});}
  furnitureReferences=setupFurnitureReferences({readData,toast});if(config)furnitureReferences.configure(config.tripo);
  function resetProject(){designRequest?.controller.abort();clearDesignRequest();$('design-status').hidden=true;$('design-elapsed').textContent='';renderAttachments?.clear();generation++;proposalValue=null;renderReference=null;renderSource=null;chat=[];stage='layout';$('design-result').hidden=true;$('render-reference').hidden=true;$('render-output').hidden=true;$('render-download').hidden=true;$('render-status').textContent='';$('design-prompt').value='';$('chat-messages').replaceChildren();}
-  return {openVideoRoom,bindAssetStorage:save=>{assetStorage=save;},bindReconstruction:hooks=>{reconstructionHooks=hooks;},showStage,settings,readData,bindStyleReference,resetProject,refresh:()=>{priceSummary();if(stage==='replica')renderReview();}};
+  return {openVideoRoom,openFurnitureIntake,bindAssetStorage:save=>{assetStorage=save;},bindReconstruction:hooks=>{reconstructionHooks=hooks;},showStage,settings,readData,bindStyleReference,resetProject,refresh:()=>{priceSummary();if(stage==='replica')renderReview();}};
 }
