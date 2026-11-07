@@ -79,6 +79,10 @@ Switch to the eye-level view to inspect the room from inside. Adjust camera heig
 | --- | --- |
 | ![Eye-level view of the furnished office](docs/media/eye-level.jpg) | ![Enlarged concept render of the office](docs/media/render-result.png) |
 
+| Reception and filming area | Office overview |
+| --- | --- |
+| ![AI render of the reception and filming area](docs/media/render-result2.png) | ![Overhead AI render of the furnished office](docs/media/render-result3.png) |
+
 Save each design to its album. Use **Export JSON** to back up the editable plan or **Export GLB** to take the 3D model into another tool.
 
 ## Service settings
